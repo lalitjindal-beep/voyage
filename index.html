@@ -255,8 +255,8 @@
   .fab:active { transform: scale(0.92); box-shadow: 0 2px 10px rgba(74,144,217,0.3); }
 
   /* MODAL / BOTTOM SHEET */
-  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 300; opacity: 0; pointer-events: none; transition: opacity 0.25s; }
-  .overlay.show { opacity: 1; pointer-events: all; }
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 300; opacity: 0; pointer-events: none !important; transition: opacity 0.25s; }
+  .overlay.show { opacity: 1; pointer-events: all !important; }
   .sheet { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%) translateY(100%); width: 100%; max-width: 430px; background: var(--surface); border-radius: 24px 24px 0 0; z-index: 301; transition: transform 0.32s cubic-bezier(0.25,0.8,0.25,1); max-height: 88dvh; overflow-y: auto; overflow-x: hidden; padding-bottom: calc(var(--safe-bot) + 20px); -webkit-overflow-scrolling: touch; }
   .sheet.show { transform: translateX(-50%) translateY(0); }
   .sheet-handle { width: 40px; height: 4px; background: var(--border); border-radius: 2px; margin: 12px auto 8px; flex-shrink: 0; }
@@ -414,7 +414,6 @@
         <button class="btn-import" onclick="document.getElementById('import-file-input').click()">⬇️ Import from Files</button>
       </div>
       <div class="backup-hint">Export saves a JSON file → iCloud Drive.<br>Import restores all your trips &amp; data.</div>
-      <input type="file" id="import-file-input" accept=".json" style="display:none" onchange="importData(event)" />
     </div>
 
     <!-- SHARE CARD -->
@@ -513,6 +512,20 @@
       <div class="chip" data-cat="Activity" onclick="filterExpenses('Activity',this)">🎭 Activity</div>
       <div class="chip" data-cat="Shopping" onclick="filterExpenses('Shopping',this)">🛍 Shopping</div>
       <div class="chip" data-cat="Other" onclick="filterExpenses('Other',this)">📌 Other</div>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <div style="position:relative;flex:1;">
+        <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:14px;pointer-events:none;">🔍</span>
+        <input class="form-input" id="expense-search" placeholder="Search expenses…" style="padding-left:34px;font-size:13px;" oninput="renderBudget()" />
+      </div>
+      <select class="form-select" id="expense-sort" onchange="renderBudget()" style="width:120px;font-size:12px;">
+        <option value="date-desc">Newest</option>
+        <option value="date-asc">Oldest</option>
+        <option value="amount-desc">High–Low</option>
+        <option value="amount-asc">Low–High</option>
+        <option value="cat">Category</option>
+        <option value="name">Name A–Z</option>
+      </select>
     </div>
     <div id="expenses-list"></div>
   </div>
@@ -1235,6 +1248,7 @@ let state = {
 };
 
 const STORAGE_KEY = 'voyage_v2';
+const STORAGE_VERSION = 3; // bump when state shape changes significantly
 let selectedEmoji = '🗼';
 let activeExpenseFilter = 'All';
 let activeReminderFilter = 'all';
@@ -1283,8 +1297,15 @@ function hideBackupReminder() {
 function load() {
   try {
     const d = localStorage.getItem(STORAGE_KEY);
-    if (d) { const p = JSON.parse(d); state = { ...state, ...p }; }
-  } catch(e) {}
+    if (d) {
+      const p = JSON.parse(d);
+      state = { ...state, ...p };
+      // Ensure activeTripId is always an object with all keys
+      if (!state.activeTripId || typeof state.activeTripId !== 'object') {
+        state.activeTripId = { it:null, pk:null, bg:null, fl:null, docs:null, split:null };
+      }
+    }
+  } catch(e) { console.warn('Load failed:', e); }
 }
 
 // ============= TABS =============
@@ -1299,8 +1320,15 @@ function switchTab(tab) {
 
 // ============= SHEETS =============
 function closeSheet(id) {
-  document.getElementById('overlay-' + id).classList.remove('show');
-  document.getElementById(id).classList.remove('show');
+  const overlay = document.getElementById('overlay-' + id);
+  const sheet = document.getElementById(id);
+  if (overlay) { overlay.classList.remove('show'); }
+  if (sheet) { sheet.classList.remove('show'); }
+}
+
+function closeAllSheets() {
+  document.querySelectorAll('.overlay').forEach(o => o.classList.remove('show'));
+  document.querySelectorAll('.sheet').forEach(s => s.classList.remove('show'));
 }
 
 // ============= TOAST =============
@@ -1847,52 +1875,84 @@ function renderBudget() {
   const rates = state.exchangeRates?.[trip.id] || {};
   const expenses = state.expenses[trip.id] || [];
 
-  // Build per-currency totals for the banner
+  // Banner
   const currencyTotals = {};
-  expenses.forEach(e => {
-    const c = e.currency || cur;
-    currencyTotals[c] = (currencyTotals[c] || 0) + e.amount;
-  });
-  const otherCurs = Object.keys(currencyTotals).filter(c => c !== cur);
+  expenses.forEach(e => { const c = e.currency||cur; currencyTotals[c]=(currencyTotals[c]||0)+e.amount; });
+  const otherCurs = Object.keys(currencyTotals).filter(c=>c!==cur);
   const banner = document.getElementById('exchange-rate-banner');
   const rl = document.getElementById('exchange-rate-label');
   if (banner && rl) {
     if (otherCurs.length) {
       banner.style.display = 'flex';
-      rl.innerHTML = otherCurs.map(c => {
-        const rate = rates[c + '_to_' + cur];
-        return rate ? `${fmtCurrency(currencyTotals[c],c)} spent (1 ${c}=${rate} ${cur})` : `${fmtCurrency(currencyTotals[c],c)} — set rate in Edit`;
-      }).join(' · ');
-    } else {
-      banner.style.display = 'none';
-    }
+      rl.innerHTML = otherCurs.map(c => { const rate=rates[c+'_to_'+cur]; return rate?`${fmtCurrency(currencyTotals[c],c)} spent (1 ${c}=${rate} ${cur})`:`${fmtCurrency(currencyTotals[c],c)} — set rate in Edit`; }).join(' · ');
+    } else { banner.style.display = 'none'; }
   }
 
-  const total = expenses.reduce((s,e) => s + (e.amountBase ?? e.amount), 0);
-  const left = (trip.budget||0) - total;
+  const total = expenses.reduce((s,e)=>s+(e.amountBase??e.amount),0);
+  const left = (trip.budget||0)-total;
   updateBudgetBoxes(trip.budget, total, left, cur);
-  const filtered = activeExpenseFilter === 'All' ? expenses : expenses.filter(e => e.cat === activeExpenseFilter);
+
+  // Category analysis
+  const catTotals = {};
+  expenses.forEach(e => { const c=e.cat||'Other'; catTotals[c]=(catTotals[c]||0)+(e.amountBase??e.amount); });
+  const catEntries = Object.entries(catTotals).sort((a,b)=>b[1]-a[1]);
+  let analysisHtml = '';
+  if (catEntries.length > 1 && total > 0) {
+    const catEmojis = {Food:'🍽',Transport:'🚗',Hotel:'🏨',Activity:'🎭',Shopping:'🛍',Other:'📌'};
+    analysisHtml = `<div class="card" style="margin-bottom:12px;">
+      <div style="font-size:12px;font-weight:700;color:var(--mid);margin-bottom:10px;">📊 SPENDING BY CATEGORY</div>
+      ${catEntries.map(([cat,amt])=>{
+        const pct=Math.round((amt/total)*100);
+        return `<div style="margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
+            <span>${catEmojis[cat]||'🏷'} ${cat}</span>
+            <span style="font-weight:600;">${fmtCurrency(amt,cur)} <span style="color:var(--muted);font-weight:400;">(${pct}%)</span></span>
+          </div>
+          <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;">
+            <div style="height:100%;width:${pct}%;background:var(--sky);border-radius:3px;"></div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
+
+  // Search + sort + filter
+  const q = (document.getElementById('expense-search')?.value||'').trim().toLowerCase();
+  const sort = document.getElementById('expense-sort')?.value || 'date-desc';
+  let filtered = activeExpenseFilter==='All' ? [...expenses] : expenses.filter(e=>e.cat===activeExpenseFilter);
+  if (q) filtered = filtered.filter(e=>e.name.toLowerCase().includes(q)||(e.cat||'').toLowerCase().includes(q));
+  // Sort
+  filtered.sort((a,b)=>{
+    if (sort==='date-desc') return (b.date||'').localeCompare(a.date||'');
+    if (sort==='date-asc') return (a.date||'').localeCompare(b.date||'');
+    if (sort==='amount-desc') return (b.amountBase??b.amount)-(a.amountBase??a.amount);
+    if (sort==='amount-asc') return (a.amountBase??a.amount)-(b.amountBase??b.amount);
+    if (sort==='cat') return (a.cat||'').localeCompare(b.cat||'');
+    if (sort==='name') return a.name.localeCompare(b.name);
+    return 0;
+  });
+
   if (!filtered.length) {
-    container.innerHTML = `<div class="empty-state"><div class="emoji">🧾</div><p>No expenses${activeExpenseFilter !== 'All' ? ' in this category' : ' yet'}<br>Tap + to add one</p></div>`;
+    container.innerHTML = analysisHtml + `<div class="empty-state"><div class="emoji">🧾</div><p>${q?'No expenses match your search':'No expenses yet — tap + to add'}</p></div>`;
     return;
   }
-  container.innerHTML = [...filtered].reverse().map(e => {
-    const eCur = e.currency || cur;
-    const isForeign = eCur !== cur;
-    const orig = isForeign ? `<div style="font-size:10px;color:var(--muted);">${fmtCurrency(e.amount, eCur)}</div>` : '';
+  const listHtml = filtered.map(e => {
+    const eCur=e.currency||cur; const isForeign=eCur!==cur;
+    const orig=isForeign?`<div style="font-size:10px;color:var(--muted);">${fmtCurrency(e.amount,eCur)}</div>`:'';
     return `<div class="expense-item">
-      <div class="expense-icon ${CAT_COLORS[e.cat] || 'cat-other'}">${CAT_ICONS[e.cat] || '🏷'}</div>
+      <div class="expense-icon ${CAT_COLORS[e.cat]||'cat-other'}">${CAT_ICONS[e.cat]||'🏷'}</div>
       <div class="expense-body">
         <div class="expense-name">${e.name}${isForeign?` <span style="font-size:9px;background:var(--sky-light);color:var(--sky-dark);border-radius:4px;padding:1px 5px;font-weight:700;">${eCur}</span>`:''}</div>
-        <div class="expense-cat">${e.cat}${e.date ? ' · ' + fmt(e.date) : ''}</div>
+        <div class="expense-cat">${e.cat}${e.date?' · '+fmt(e.date):''}</div>
       </div>
       <div style="display:flex;align-items:center;gap:6px;">
-        <div style="text-align:right;"><div class="expense-amount">${fmtCurrency(e.amountBase ?? e.amount, cur)}</div>${orig}</div>
+        <div style="text-align:right;"><div class="expense-amount">${fmtCurrency(e.amountBase??e.amount,cur)}</div>${orig}</div>
         <span style="color:var(--sky);font-size:18px;cursor:pointer;padding:4px;" onclick="openEditExpense('${trip.id}','${e.id}')">✏️</span>
         <span class="expense-del" onclick="delExpense('${trip.id}','${e.id}')">🗑</span>
       </div>
     </div>`;
   }).join('');
+  container.innerHTML = analysisHtml + listHtml;
 }
 
 function updateBudgetBoxes(budget, spent, left, cur) {
@@ -2229,6 +2289,10 @@ function updateNewCurRateLabel() {
 
 document.addEventListener('change', e => {
   if (e.target.id === 'new-cur-select' || e.target.id === 'edit-budget-currency') updateNewCurRateLabel();
+  if (e.target.id === 'inp-prog-cycle') {
+    const el = document.getElementById('prog-anniv-group');
+    if (el) el.style.display = e.target.value === 'anniversary' ? 'block' : 'none';
+  }
 });
 
 function addTripCurrency() {
@@ -2762,8 +2826,17 @@ function renderCalendarView(trip, items, container) {
             ${a.note?`<div class="activity-note">${a.note}</div>`:''}
           </div>
           <span class="activity-del" onclick="delActivity('${trip.id}','${a.id}');calViewDate._manualNav=true;renderItinerary()">🗑</span>
-        </div>`).join('')
-      : `<div style="font-size:13px;color:var(--muted);padding:8px 0;">No activities on this day.<br><span style="color:var(--sky);cursor:pointer;font-weight:600;" onclick="openSheet('sheet-activity')">+ Add one</span></div>`}
+        </div>`).join('') : ''}
+      ${isInTrip ? `
+      <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+        <div style="font-size:12px;font-weight:700;color:var(--mid);margin-bottom:8px;">+ ADD ACTIVITY FOR DAY ${dayNum}</div>
+        <input class="form-input" id="cal-act-name" placeholder="Activity name" style="margin-bottom:8px;" />
+        <div style="display:flex;gap:8px;margin-bottom:8px;">
+          <input class="form-input" id="cal-act-time" type="time" style="flex:1;" />
+          <input class="form-input" id="cal-act-note" placeholder="Note (optional)" style="flex:2;" />
+        </div>
+        <button onclick="addActivityFromCal('${trip.id}',${dayNum})" style="width:100%;padding:10px;background:var(--sky);color:white;border:none;border-radius:12px;font-size:13px;font-weight:600;cursor:pointer;">Add to Day ${dayNum}</button>
+      </div>` : ''}
     </div>`;
   }
 
@@ -2783,6 +2856,27 @@ function selectCalDate(dateStr) {
   calViewDate._manualNav = true;
   renderItinerary();
 }
+
+function addActivityFromCal(tripId, dayNum) {
+  const name = document.getElementById('cal-act-name')?.value.trim();
+  if (!name) { showToast('Enter activity name'); return; }
+  const time = document.getElementById('cal-act-time')?.value || '';
+  const note = document.getElementById('cal-act-note')?.value.trim() || '';
+  if (!state.itineraries[tripId]) state.itineraries[tripId] = [];
+  state.itineraries[tripId].push({ id: uid(), name, day: dayNum, time, note });
+  save();
+  // Clear inputs and re-render
+  const n = document.getElementById('cal-act-name'); if(n) n.value='';
+  const t = document.getElementById('cal-act-time'); if(t) t.value='';
+  const no = document.getElementById('cal-act-note'); if(no) no.value='';
+  calViewDate._manualNav = true;
+  renderItinerary();
+  showToast(`Added to Day ${dayNum} ✅`);
+}
+  calViewDate.setMonth(calViewDate.getMonth()-1);
+  calViewDate._manualNav = true;
+  renderItinerary();
+}
 function calPrevMonth() {
   calViewDate.setMonth(calViewDate.getMonth()-1);
   calViewDate._manualNav = true;
@@ -2796,7 +2890,21 @@ function calNextMonth() {
 
 // ============= UTILS =============
 function uid() { return Math.random().toString(36).substr(2,9); }
-function renderAll() { renderTrips(); renderItinerary(); renderPacking(); renderBudget(); renderFlights(); renderReminders(); renderDashboard(); renderDocs(); renderSplit(); renderLoungeCards(); }
+function safeRender(fn, name) {
+  try { fn(); } catch(e) { console.warn('Render error in', name, e.message); }
+}
+function renderAll() {
+  safeRender(renderTrips,'trips');
+  safeRender(renderItinerary,'itinerary');
+  safeRender(renderPacking,'packing');
+  safeRender(renderBudget,'budget');
+  safeRender(renderFlights,'flights');
+  safeRender(renderReminders,'reminders');
+  safeRender(renderDashboard,'dashboard');
+  safeRender(renderDocs,'docs');
+  safeRender(renderSplit,'split');
+  safeRender(renderLoungeCards,'lounge');
+}
 
 // ============= CUSTOM PACK CATEGORIES =============
 const DEFAULT_PACK_CATS = ['📄 Documents','👕 Clothes','🧴 Toiletries','💊 Health','🔌 Electronics','📦 Other'];
@@ -3062,17 +3170,48 @@ function importData(event) {
   reader.onload = function(e) {
     try {
       const parsed = JSON.parse(e.target.result);
-      if (!parsed.trips || !Array.isArray(parsed.trips)) { showToast('Invalid backup file'); return; }
-      state = { ...state, ...parsed };
+      if (!parsed.trips || !Array.isArray(parsed.trips)) { showToast('Invalid backup file ❌'); event.target.value = ''; return; }
+      state = {
+        trips: parsed.trips || [],
+        itineraries: parsed.itineraries || {},
+        packingLists: parsed.packingLists || {},
+        expenses: parsed.expenses || {},
+        flights: parsed.flights || {},
+        hotels: parsed.hotels || {},
+        reminders: parsed.reminders || [],
+        documents: parsed.documents || {},
+        groupMembers: parsed.groupMembers || {},
+        loungeCards: parsed.loungeCards || [],
+        customPackCats: parsed.customPackCats || [],
+        customExpCats: parsed.customExpCats || [],
+        deletedPackItems: parsed.deletedPackItems || [],
+        deletedReminders: parsed.deletedReminders || [],
+        deletedTrips: parsed.deletedTrips || [],
+        deletedExpenses: parsed.deletedExpenses || [],
+        exchangeRates: parsed.exchangeRates || {},
+        activeTripId: {
+          it: parsed.activeTripId?.it || parsed.trips[0]?.id || null,
+          pk: parsed.activeTripId?.pk || parsed.trips[0]?.id || null,
+          bg: parsed.activeTripId?.bg || parsed.trips[0]?.id || null,
+          fl: parsed.activeTripId?.fl || parsed.trips[0]?.id || null,
+          docs: parsed.activeTripId?.docs || parsed.trips[0]?.id || null,
+          split: parsed.activeTripId?.split || parsed.trips[0]?.id || null,
+        }
+      };
       save();
       renderAll();
-      showToast(`Restored ${parsed.trips.length} trip(s) ✅`);
+      populateExpCatSelects();
+      populatePackCatSelect();
+      event.target.value = '';
+      showToast(`✅ Restored ${parsed.trips.length} trip(s)`);
     } catch(err) {
-      showToast('Failed to read file');
+      console.error('Import error:', err);
+      event.target.value = '';
+      showToast('Failed to read file ❌');
     }
   };
+  reader.onerror = () => { showToast('Could not read file ❌'); event.target.value = ''; };
   reader.readAsText(file);
-  event.target.value = '';
 }
 
 // ============= SHARE =============
@@ -3312,69 +3451,175 @@ function doSharePDF() {
 function renderDashboard() {
   const container = document.getElementById('dashboard-content');
   if (!container) return;
-  if (!state.trips.length) {
-    container.innerHTML = `<div class="empty-state"><div class="emoji">📊</div><p>Add a trip to see your dashboard</p></div>`;
-    return;
-  }
+  if (!state.trips.length) { container.innerHTML = `<div class="empty-state"><div class="emoji">📊</div><p>Add a trip to see your dashboard</p></div>`; return; }
   const now = new Date();
-  const html = state.trips.map(t => {
-    const expenses = state.expenses[t.id] || [];
-    const spent = expenses.reduce((s,e) => s + (e.amountBase||e.amount), 0);
-    const budget = t.budget || 0;
-    const pct = budget ? Math.min(100, Math.round((spent/budget)*100)) : 0;
-    const packItems = state.packingLists[t.id] || [];
+  const today = now.toISOString().slice(0,10);
+  let html = '';
+
+  // ---- NEXT TRIP COUNTDOWN ----
+  const upcoming = state.trips.filter(t=>t.start && new Date(t.start+'T12:00')>now).sort((a,b)=>a.start.localeCompare(b.start))[0];
+  const activeTrip = state.trips.find(t=>t.start&&t.end&&now>=new Date(t.start+'T12:00')&&now<=new Date(t.end+'T12:00'));
+  if (upcoming && !activeTrip) {
+    const daysTo = Math.ceil((new Date(upcoming.start+'T12:00')-now)/(1000*60*60*24));
+    html += `<div style="background:linear-gradient(135deg,var(--sky),var(--sky-dark));border-radius:16px;padding:18px;margin-bottom:14px;color:white;text-align:center;">
+      <div style="font-size:36px;margin-bottom:4px;">${upcoming.emoji}</div>
+      <div style="font-size:22px;font-weight:800;">${upcoming.dest}</div>
+      <div style="font-size:13px;opacity:0.8;margin-top:2px;">${fmt(upcoming.start)} → ${upcoming.end?fmt(upcoming.end):''}</div>
+      <div style="font-size:42px;font-weight:900;margin:8px 0;">${daysTo}</div>
+      <div style="font-size:14px;opacity:0.9;font-weight:600;">days to go ✈️</div>
+    </div>`;
+  }
+
+  // ---- TODAY'S ITINERARY (if active trip) ----
+  if (activeTrip) {
+    const tripStart = new Date(activeTrip.start+'T12:00');
+    const dayNum = Math.round((now-tripStart)/(1000*60*60*24))+1;
+    const todayActs = (state.itineraries[activeTrip.id]||[]).filter(a=>+a.day===dayNum).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+    html += `<div class="card" style="margin-bottom:14px;border-left:4px solid var(--sky);">
+      <div style="font-size:12px;font-weight:700;color:var(--sky);margin-bottom:8px;">📅 TODAY · ${activeTrip.emoji} ${activeTrip.dest} Day ${dayNum}</div>
+      ${todayActs.length ? todayActs.map(a=>`<div class="activity-item" style="border-bottom:1px solid var(--border);">
+        <span class="activity-time">${a.time||'—'}</span>
+        <div class="activity-dot"></div>
+        <div class="activity-body"><div class="activity-name">${a.name}</div>${a.note?`<div class="activity-note">${a.note}</div>`:''}</div>
+      </div>`).join('')
+      : `<div style="font-size:13px;color:var(--muted);">No activities planned for today · <span style="color:var(--sky);cursor:pointer;" onclick="switchTab('itinerary')">Add one →</span></div>`}
+    </div>`;
+  }
+
+  // ---- PER-TRIP CARDS ----
+  html += state.trips.map(t => {
+    const expenses = state.expenses[t.id]||[];
+    const spent = expenses.reduce((s,e)=>s+(e.amountBase??e.amount),0);
+    const budget = t.budget||0;
+    const pct = budget?Math.min(100,Math.round((spent/budget)*100)):0;
+    const packItems = state.packingLists[t.id]||[];
     const packed = packItems.filter(i=>i.checked).length;
-    const packPct = packItems.length ? Math.round((packed/packItems.length)*100) : 0;
-    const activities = state.itineraries[t.id] || [];
-    const daysLeft = t.end ? Math.ceil((new Date(t.end+'T12:00') - now)/(1000*60*60*24)) : null;
-    const isActive = t.start && t.end && now >= new Date(t.start+'T12:00') && now <= new Date(t.end+'T12:00');
-    const cur = t.currency || '';
+    const packPct = packItems.length?Math.round((packed/packItems.length)*100):0;
+    const activities = state.itineraries[t.id]||[];
+    const cur = t.currency||'';
+    const isActive = t.start&&t.end&&now>=new Date(t.start+'T12:00')&&now<=new Date(t.end+'T12:00');
+    const daysLeft = t.end?Math.ceil((new Date(t.end+'T12:00')-now)/(1000*60*60*24)):null;
+    const tripDays = (t.start&&t.end)?Math.ceil((new Date(t.end+'T12:00')-new Date(t.start+'T12:00'))/(1000*60*60*24)):null;
+
+    // Daily pace
+    let paceHtml = '';
+    if (isActive && budget && tripDays) {
+      const elapsed = Math.max(1,Math.ceil((now-new Date(t.start+'T12:00'))/(1000*60*60*24)));
+      const dailyActual = spent/elapsed;
+      const dailyBudget = budget/tripDays;
+      const projectedTotal = dailyActual * tripDays;
+      const overUnder = projectedTotal - budget;
+      paceHtml = `<div style="background:${overUnder>0?'var(--red-light)':'var(--green-light)'};border-radius:10px;padding:10px 12px;margin-top:8px;font-size:12px;">
+        <div style="font-weight:700;color:${overUnder>0?'var(--red)':'var(--green)'};">💸 Spending Pace</div>
+        <div style="color:var(--slate);margin-top:3px;">${fmtCurrency(dailyActual,cur)}/day avg · Budget: ${fmtCurrency(dailyBudget,cur)}/day</div>
+        <div style="color:${overUnder>0?'var(--red)':'var(--green)'};font-weight:600;margin-top:2px;">${overUnder>0?`⚠️ On track to overspend by ${fmtCurrency(overUnder,cur)}`:`✅ On track to save ${fmtCurrency(Math.abs(overUnder),cur)}`}</div>
+      </div>`;
+    }
+
+    // Category breakdown mini
+    const catTotals = {};
+    expenses.forEach(e=>{const c=e.cat||'Other';catTotals[c]=(catTotals[c]||0)+(e.amountBase??e.amount);});
+    const topCats = Object.entries(catTotals).sort((a,b)=>b[1]-a[1]).slice(0,3);
+    const catHtml = topCats.length && spent>0 ? `<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
+      ${topCats.map(([c,a])=>`<span style="background:var(--surface2);border-radius:8px;padding:4px 8px;font-size:11px;font-weight:600;">${CAT_ICONS[c]||'🏷'} ${c} ${Math.round((a/spent)*100)}%</span>`).join('')}
+    </div>` : '';
+
+    // Pre-trip readiness
+    const hasFlights=(state.flights[t.id]||[]).length>0;
+    const hasHotels=(state.hotels[t.id]||[]).length>0;
+    const hasDocs=(state.documents[t.id]||[]).length>0;
+    const daysToStart = t.start?Math.ceil((new Date(t.start+'T12:00')-now)/(1000*60*60*24)):null;
+    const showReadiness = daysToStart!==null && daysToStart>0 && daysToStart<60;
+    const readyHtml = showReadiness ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+      <div style="font-size:11px;font-weight:700;color:var(--mid);margin-bottom:6px;">✈️ TRIP READINESS</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:12px;">
+        <span>${hasFlights?'✅':'❌'} Flights added</span>
+        <span>${hasHotels?'✅':'❌'} Hotel added</span>
+        <span>${packItems.length>0?'✅':'❌'} Packing started</span>
+        <span>${hasDocs?'✅':'❌'} Documents added</span>
+      </div>
+    </div>` : '';
+
     return `<div class="card" style="margin-bottom:14px;">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
         <span style="font-size:28px;">${t.emoji}</span>
-        <div style="flex:1;">
-          <div style="font-weight:700;font-size:16px;">${t.dest}</div>
-          <div style="font-size:12px;color:var(--muted);">${t.start?fmt(t.start):''} ${t.end?'→ '+fmt(t.end):''}</div>
-        </div>
-        ${isActive?'<span style="background:var(--green);color:white;border-radius:8px;padding:3px 8px;font-size:11px;font-weight:700;">ACTIVE</span>':
-          daysLeft>0?`<span style="background:var(--sky-light);color:var(--sky-dark);border-radius:8px;padding:3px 8px;font-size:11px;font-weight:600;">In ${daysLeft}d</span>`:''}
+        <div style="flex:1;"><div style="font-weight:700;font-size:15px;">${t.dest}</div>
+        <div style="font-size:11px;color:var(--muted);">${t.start?fmt(t.start):''} ${t.end?'→ '+fmt(t.end):''}</div></div>
+        ${isActive?'<span style="background:var(--green);color:white;border-radius:8px;padding:3px 8px;font-size:11px;font-weight:700;">ACTIVE</span>':daysLeft>0?`<span style="background:var(--sky-light);color:var(--sky-dark);border-radius:8px;padding:3px 8px;font-size:11px;font-weight:600;">In ${daysLeft}d</span>`:''}
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px;">
-        <div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center;">
-          <div style="font-size:18px;font-weight:800;color:var(--sky);">${activities.length}</div>
-          <div style="font-size:10px;color:var(--muted);font-weight:600;">Activities</div>
-        </div>
-        <div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center;">
-          <div style="font-size:18px;font-weight:800;color:${pct>90?'var(--red)':'var(--green)'};">${pct}%</div>
-          <div style="font-size:10px;color:var(--muted);font-weight:600;">Budget used</div>
-        </div>
-        <div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center;">
-          <div style="font-size:18px;font-weight:800;color:var(--sand);">${packPct}%</div>
-          <div style="font-size:10px;color:var(--muted);font-weight:600;">Packed</div>
-        </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px;">
+        <div style="background:var(--surface2);border-radius:8px;padding:8px;text-align:center;"><div style="font-size:16px;font-weight:800;color:var(--sky);">${activities.length}</div><div style="font-size:9px;color:var(--muted);font-weight:600;">Activities</div></div>
+        <div style="background:var(--surface2);border-radius:8px;padding:8px;text-align:center;"><div style="font-size:16px;font-weight:800;color:${pct>90?'var(--red)':'var(--green)'};">${pct}%</div><div style="font-size:9px;color:var(--muted);font-weight:600;">Budget</div></div>
+        <div style="background:var(--surface2);border-radius:8px;padding:8px;text-align:center;"><div style="font-size:16px;font-weight:800;color:var(--sand);">${packPct}%</div><div style="font-size:9px;color:var(--muted);font-weight:600;">Packed</div></div>
+        <div style="background:var(--surface2);border-radius:8px;padding:8px;text-align:center;"><div style="font-size:16px;font-weight:800;color:var(--mid);">${expenses.length}</div><div style="font-size:9px;color:var(--muted);font-weight:600;">Expenses</div></div>
       </div>
       <div style="margin-bottom:6px;">
         <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px;"><span>Budget</span><span>${fmtCurrency(spent,cur)} / ${fmtCurrency(budget,cur)}</span></div>
-        <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;"><div style="height:100%;width:${pct}%;background:${pct>90?'var(--red)':'var(--sky)'};border-radius:3px;transition:width 0.4s;"></div></div>
+        <div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden;"><div style="height:100%;width:${pct}%;background:${pct>90?'var(--red)':'var(--sky)'};border-radius:3px;"></div></div>
       </div>
-      <div>
-        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px;"><span>Packing</span><span>${packed}/${packItems.length} items</span></div>
-        <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;"><div style="height:100%;width:${packPct}%;background:var(--sand);border-radius:3px;transition:width 0.4s;"></div></div>
-      </div>
+      ${catHtml}${paceHtml}${readyHtml}
     </div>`;
   }).join('');
 
-  // Upcoming reminders
-  const pending = (state.reminders||[]).filter(r=>!r.done && r.datetime).sort((a,b)=>a.datetime.localeCompare(b.datetime)).slice(0,3);
-  const remHtml = pending.length ? `<div class="section-label">Upcoming Reminders</div>${pending.map(r=>{
-    const due = new Date(r.datetime).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
-    return `<div class="card" style="display:flex;gap:10px;align-items:center;margin-bottom:8px;">
-      <span style="font-size:20px;">${REM_CAT_ICONS[r.cat]||'📌'}</span>
-      <div style="flex:1;"><div style="font-size:13px;font-weight:600;">${r.title}</div><div style="font-size:11px;color:var(--muted);">${due}</div></div>
-    </div>`;
-  }).join('')}` : '';
+  // ---- EXPIRING DOCUMENTS ----
+  const soon = new Date(); soon.setMonth(soon.getMonth()+6);
+  const expiringDocs = [];
+  Object.entries(state.documents||{}).forEach(([tripId, docs]) => {
+    const trip = state.trips.find(t=>t.id===tripId);
+    (docs||[]).forEach(d => {
+      if (d.expiry) {
+        const exp = new Date(d.expiry+'T12:00');
+        if (exp <= soon) expiringDocs.push({...d, tripName: trip?.dest||''});
+      }
+    });
+  });
+  if (expiringDocs.length) {
+    html += `<div class="section-label">⚠️ Documents Expiring Soon</div>`;
+    html += expiringDocs.map(d=>{
+      const exp = new Date(d.expiry+'T12:00');
+      const expired = exp < now;
+      return `<div class="card" style="display:flex;gap:10px;align-items:center;margin-bottom:8px;border-left:4px solid ${expired?'var(--red)':'var(--sand)'};">
+        <span style="font-size:20px;">${d.type.split(' ')[0]}</span>
+        <div style="flex:1;"><div style="font-size:13px;font-weight:600;">${d.name}</div>
+        <div style="font-size:11px;color:var(--muted);">${d.tripName}</div></div>
+        <span style="font-size:11px;font-weight:700;color:${expired?'var(--red)':'var(--sand)'};">${expired?'EXPIRED':fmt(d.expiry)}</span>
+      </div>`;
+    }).join('');
+  }
 
-  container.innerHTML = html + remHtml;
+  // ---- LOUNGE QUICK VIEW ----
+  const loungeProgs = [];
+  (state.loungeCards||[]).forEach(c=>(c.programs||[]).forEach(p=>{
+    try {
+      const remaining=Math.max(0,(p.limit||0)-getUsedVisits(p));
+      loungeProgs.push({cardName:c.name,digits:c.digits||'',progName:p.name,remaining,limit:p.limit||0});
+    } catch(e) {}
+  }));
+  const topLounge = loungeProgs.filter(p=>p.remaining>0).sort((a,b)=>b.remaining-a.remaining).slice(0,3);
+  if (topLounge.length) {
+    html += `<div class="section-label">🛋 Lounge Visits Available</div>`;
+    html += `<div class="card" style="margin-bottom:14px;">${topLounge.map(p=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);">
+        <div><div style="font-size:13px;font-weight:600;">${p.cardName} <span style="color:var(--muted);font-weight:400;">••${p.digits}</span></div>
+        <div style="font-size:11px;color:var(--muted);">${p.progName}</div></div>
+        <div style="background:var(--green-light);color:var(--green);border-radius:8px;padding:4px 10px;font-size:13px;font-weight:700;">${p.remaining} left</div>
+      </div>`).join('')}</div>`;
+  }
+
+  // ---- UPCOMING REMINDERS ----
+  const pending = (state.reminders||[]).filter(r=>!r.done&&r.datetime).sort((a,b)=>a.datetime.localeCompare(b.datetime)).slice(0,3);
+  if (pending.length) {
+    html += `<div class="section-label">🔔 Upcoming Reminders</div>`;
+    html += pending.map(r=>{
+      const due=new Date(r.datetime).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+      return `<div class="card" style="display:flex;gap:10px;align-items:center;margin-bottom:8px;">
+        <span style="font-size:20px;">${REM_CAT_ICONS[r.cat]||'📌'}</span>
+        <div style="flex:1;"><div style="font-size:13px;font-weight:600;">${r.title}</div><div style="font-size:11px;color:var(--muted);">${due}</div></div>
+      </div>`;
+    }).join('');
+  }
+
+  container.innerHTML = html;
 }
 
 // ============= DOCUMENT VAULT =============
@@ -3518,11 +3763,7 @@ function removeMember(tripId, memberId) {
 const CYCLE_LABELS = { calendar: 'Calendar Year', anniversary: 'Card Anniversary', quarter: 'Per Quarter', never: 'Lifetime' };
 
 // Toggle anniversary date field visibility
-document.addEventListener('change', e => {
-  if (e.target.id === 'inp-prog-cycle') {
-    document.getElementById('prog-anniv-group').style.display = e.target.value === 'anniversary' ? 'block' : 'none';
-  }
-});
+// lounge cycle change handled in merged listener above
 
 function getCycleWindow(program) {
   // Returns {start, end} Date objects for the CURRENT active cycle of this program
@@ -3548,8 +3789,10 @@ function getCycleWindow(program) {
 }
 
 function getUsedVisits(program) {
+  if (!program) return 0;
   const { start, end } = getCycleWindow(program);
-  return (program.visits||[]).filter(v => {
+  return (program.visits || []).filter(v => {
+    if (!v || !v.date) return false;
     const d = new Date(v.date + 'T12:00');
     return d >= start && d <= end;
   }).length;
@@ -3829,7 +4072,11 @@ function deleteVisit(cardId, progId, visitId) {
 }
 
 // INIT
-load();
+try {
+  load();
+} catch(e) { console.warn('Load error:', e); }
+
+// Ensure all state fields exist
 if (!state.customPackCats) state.customPackCats = [];
 if (!state.customExpCats) state.customExpCats = [];
 if (!state.reminders) state.reminders = [];
@@ -3841,13 +4088,21 @@ if (!state.deletedReminders) state.deletedReminders = [];
 if (!state.deletedTrips) state.deletedTrips = [];
 if (!state.deletedExpenses) state.deletedExpenses = [];
 if (!state.exchangeRates) state.exchangeRates = {};
+if (!state.activeTripId) state.activeTripId = {};
+if (!state.activeTripId.it) state.activeTripId.it = state.trips[0]?.id || null;
+if (!state.activeTripId.pk) state.activeTripId.pk = state.trips[0]?.id || null;
+if (!state.activeTripId.bg) state.activeTripId.bg = state.trips[0]?.id || null;
+if (!state.activeTripId.fl) state.activeTripId.fl = state.trips[0]?.id || null;
 if (!state.activeTripId.docs) state.activeTripId.docs = state.activeTripId.it;
 if (!state.activeTripId.split) state.activeTripId.split = state.activeTripId.it;
-renderAll();
-populatePackCatSelect();
-populateExpCatSelects();
-rescheduleAll();
-if ('Notification' in window) notifPermission = Notification.permission;
+
+try { renderAll(); } catch(e) { console.warn('renderAll error:', e); }
+try { populatePackCatSelect(); } catch(e) {}
+try { populateExpCatSelects(); } catch(e) {}
+try { rescheduleAll(); } catch(e) {}
+if ('Notification' in window) try { notifPermission = Notification.permission; } catch(e) {}
 </script>
+<!-- File inputs at body level for iOS Safari compatibility -->
+<input type="file" id="import-file-input" accept=".json" style="position:fixed;top:-100px;left:-100px;opacity:0;pointer-events:none;" onchange="importData(event)" />
 </body>
 </html>
