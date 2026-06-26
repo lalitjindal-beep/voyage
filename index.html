@@ -202,7 +202,6 @@
   .hotel-ref { font-size: 12px; color: var(--sky); margin-top: 5px; font-weight: 500; }
   .hotel-del { color: var(--muted); font-size: 16px; cursor: pointer; align-self: flex-start; padding: 4px; }
 
-  /* LOUNGE TRACKER */
   .lounge-card { background: linear-gradient(135deg,#1E2D3D,#2C3E50); border-radius: 16px; padding: 16px; margin-bottom: 14px; color: white; box-shadow: var(--shadow); }
   .lounge-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px; }
   .lounge-card-name { font-size: 15px; font-weight: 700; }
@@ -342,7 +341,6 @@
     #pdf-area { display: block !important; position: static !important; top: 0 !important; left: 0 !important; width: 100% !important; padding: 20px !important; }
   }
 
-  /* SHARE */
   .share-option { display: flex; align-items: center; gap: 14px; padding: 14px; background: var(--surface); border-radius: 14px; margin-bottom: 8px; border: 1.5px solid var(--border); cursor: pointer; transition: border-color 0.15s; }
   .share-option.selected { border-color: var(--sky); background: var(--sky-light); }
   .share-option-icon { font-size: 26px; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: var(--surface2); border-radius: 10px; flex-shrink: 0; }
@@ -370,7 +368,6 @@
   #pdf-area .pdf-cat { color: #9DAAB5; min-width: 90px; }
   #pdf-area .pdf-check { min-width: 16px; }
 
-  /* BACKUP BAR */
   .backup-bar { background: var(--surface); border: 1.5px solid var(--border); border-radius: 16px; padding: 14px 16px; margin-bottom: 20px; }
   .backup-bar-title { font-size: 13px; font-weight: 700; color: var(--slate); margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
   .backup-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -401,7 +398,7 @@
     <!-- BACKUP BAR -->
     <div class="backup-bar">
       <div class="backup-bar-title">☁️ iCloud Backup</div>
-      <div id="backup-reminder-banner" style="display:none;background:#FEF6E4;border:1.5px solid #E8A83E;border-radius:10px;padding:10px 12px;margin-bottom:10px;display:none;align-items:center;gap:10px;">
+      <div id="backup-reminder-banner" style="display:none;background:#FEF6E4;border:1.5px solid #E8A83E;border-radius:10px;padding:10px 12px;margin-bottom:10px;align-items:center;gap:10px;">
         <span style="font-size:18px;">⚠️</span>
         <div style="flex:1;">
           <div style="font-size:13px;font-weight:700;color:#7a5c00;">Unsaved changes!</div>
@@ -496,7 +493,7 @@
     <div style="display:flex;gap:8px;margin-bottom:12px;">
       <div style="position:relative;flex:1;">
         <span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);font-size:16px;pointer-events:none;">🔍</span>
-        <input class="form-input" id="exp-search" placeholder="Search expenses…" style="padding-left:40px;" oninput="renderBudget()" />
+        <input class="form-input" id="exp-search" placeholder="Search expenses…" style="padding-left:40px;" oninput="debounceRenderBudget()" />
       </div>
       <select id="exp-sort" class="form-select" style="width:auto;flex-shrink:0;padding:13px 30px 13px 12px;font-size:13px;font-weight:600;color:var(--sky-dark);" onchange="renderBudget()">
         <option value="date-desc">Newest first</option>
@@ -509,7 +506,7 @@
       </select>
     </div>
     <!-- Exchange rate banner -->
-    <div id="exchange-rate-banner" style="display:none;background:var(--sky-light);border:1.5px solid var(--sky);border-radius:12px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+    <div id="exchange-rate-banner" style="display:none;background:var(--sky-light);border:1.5px solid var(--sky);border-radius:12px;padding:10px 14px;margin-bottom:12px;align-items:flex-start;justify-content:space-between;gap:8px;">
       <div style="font-size:11px;color:var(--sky-dark);line-height:1.5;">
         <span style="font-weight:700;">💱 Foreign spend:</span>
         <span id="exchange-rate-label" style="display:block;margin-top:2px;"></span>
@@ -587,19 +584,14 @@
     </div>
     <div id="docs-list"></div>
     <button class="add-activity-btn" onclick="openSheet('sheet-add-doc')" style="margin-bottom:20px;">+ Add Document</button>
-    <div class="section-label">👥 Group Split</div>
-    <div id="trip-selector-split" class="trip-selector" onclick="openSheet('sheet-select-trip','split')">
-      <div><div class="trip-selector-label">Current Trip</div><div class="trip-selector-name" id="sel-trip-split">Select a trip</div></div>
-      <span class="trip-selector-arrow">›</span>
-    </div>
-    <div id="split-content"></div>
+
     <button class="add-activity-btn" onclick="openSheet('sheet-add-member')" style="margin-bottom:20px;">+ Add Member</button>
 
     <div class="section-label">🛋 Airport Lounge Tracker</div>
     <div id="lounge-summary"></div>
     <div style="position:relative;margin-bottom:12px;">
       <span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);font-size:16px;pointer-events:none;">🔍</span>
-      <input class="form-input" id="lounge-search" placeholder="Search card or program…" style="padding-left:40px;" oninput="renderLoungeCards()" />
+      <input class="form-input" id="lounge-search" placeholder="Search card or program…" style="padding-left:40px;" oninput="debounceRenderLounge()" />
     </div>
     <div class="chip-tabs" id="lounge-filter-tabs">
       <div class="chip active" data-f="all" onclick="filterLounge('all',this)">All Cards</div>
@@ -808,7 +800,7 @@
     <button onclick="addExpenseRow()" style="width:100%;padding:10px;border:1.5px dashed var(--border);border-radius:10px;background:none;color:var(--sky);font-size:13px;font-weight:600;cursor:pointer;margin-bottom:14px;">+ Add Another Item</button>
 
     <!-- Running total -->
-    <div id="multi-expense-total" style="display:none;background:var(--sky-light);border-radius:10px;padding:10px 14px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
+    <div id="multi-expense-total" style="display:none;background:var(--sky-light);border-radius:10px;padding:10px 14px;margin-bottom:12px;justify-content:space-between;align-items:center;">
       <span style="font-size:13px;font-weight:600;color:var(--sky-dark);">Total</span>
       <span id="multi-total-amount" style="font-size:16px;font-weight:800;color:var(--sky-dark);"></span>
     </div>
@@ -1212,17 +1204,6 @@
     <button class="btn-primary" onclick="logVisit()">Log Visit</button>
     <div class="section-label" style="margin-top:18px;">Visit History</div>
     <div id="visit-history-list"></div>
-  </div>
-</div>
-
-<!-- Add Group Member Sheet -->
-<div class="overlay" id="overlay-sheet-add-member" onclick="closeSheet('sheet-add-member')"></div>
-<div class="sheet" id="sheet-add-member">
-  <div class="sheet-handle"></div>
-  <div class="sheet-title">Add Member</div>
-  <div class="sheet-body">
-    <div class="form-group"><label class="form-label">Name</label><input class="form-input" id="inp-member-name" placeholder="e.g. Priya" /></div>
-    <button class="btn-primary" onclick="addMember()">Add Member</button>
   </div>
 </div>
 
@@ -2718,6 +2699,7 @@ function delHotel(tripId, id) { state.hotels[tripId] = state.hotels[tripId].filt
 // ============= CALENDAR VIEW =============
 let itineraryViewMode = 'list'; // 'list' or 'calendar'
 let calViewDate = new Date();
+let calManualNav = false;
 let calSelectedDate = null;
 
 function toggleItineraryView() {
@@ -2769,7 +2751,7 @@ function renderListView(trip, items, container) {
 
 function renderCalendarView(trip, items, container) {
   // If trip has a start date, auto-navigate to that month on first load
-  if (trip.start && !calViewDate._manualNav) {
+  if (trip.start && !calManualNav) {
     calViewDate = new Date(trip.start + 'T12:00');
   }
 
@@ -2877,25 +2859,28 @@ function renderCalendarView(trip, items, container) {
 
 function selectCalDate(dateStr) {
   calSelectedDate = calSelectedDate === dateStr ? null : dateStr;
-  calViewDate._manualNav = true;
+  calManualNav = true;
   renderItinerary();
 }
 function calPrevMonth() {
   calViewDate.setMonth(calViewDate.getMonth()-1);
-  calViewDate._manualNav = true;
+  calManualNav = true;
   renderItinerary();
 }
 function calNextMonth() {
   calViewDate.setMonth(calViewDate.getMonth()+1);
-  calViewDate._manualNav = true;
+  calManualNav = true;
   renderItinerary();
 }
 
-// ============= UTILS =============
 function uid() { return Math.random().toString(36).substr(2,9); }
-function renderAll() { renderTrips(); renderItinerary(); renderPacking(); renderBudget(); renderFlights(); renderReminders(); renderDashboard(); renderDocs(); renderSplit(); renderLoungeCards(); }
 
-// ============= CUSTOM PACK CATEGORIES =============
+let _budgetTimer=null,_loungeTimer=null;
+function debounceRenderBudget(){clearTimeout(_budgetTimer);_budgetTimer=setTimeout(renderBudget,220);}
+function debounceRenderLounge(){clearTimeout(_loungeTimer);_loungeTimer=setTimeout(renderLoungeCards,220);}
+
+function renderAll() { renderTrips(); renderItinerary(); renderPacking(); renderBudget(); renderFlights(); renderReminders(); renderDashboard(); renderDocs(); renderLoungeCards(); }
+
 const DEFAULT_PACK_CATS = ['📄 Documents','👕 Clothes','🧴 Toiletries','💊 Health','🔌 Electronics','📦 Other'];
 
 function getAllPackCats() {
@@ -3581,70 +3566,6 @@ function deleteDoc() {
   showToast('Document deleted');
 }
 
-// ============= GROUP SPLIT =============
-function renderSplit() {
-  const selEl = document.getElementById('sel-trip-split');
-  const container = document.getElementById('split-content');
-  if (!selEl||!container) return;
-  const trip = getActiveTrip('split');
-  selEl.textContent = trip ? trip.dest : 'Select a trip';
-  if (!trip) { container.innerHTML=''; return; }
-  const members = state.groupMembers[trip.id] || [];
-  const expenses = state.expenses[trip.id] || [];
-  if (!members.length) {
-    container.innerHTML = `<div style="color:var(--muted);font-size:13px;padding:8px 0 4px;">Add members to split expenses</div>`;
-    return;
-  }
-  const total = expenses.reduce((s,e)=>s+(e.amountBase||e.amount),0);
-  const perPerson = members.length ? total/members.length : 0;
-  const cur = trip.currency||'';
-  container.innerHTML = `
-    <div class="card" style="margin-bottom:12px;">
-      <div style="font-size:13px;font-weight:700;margin-bottom:8px;">Trip Total: ${fmtCurrency(total,cur)}</div>
-      <div style="font-size:12px;color:var(--muted);">Split equally: ${fmtCurrency(perPerson,cur)} per person</div>
-    </div>
-    ${members.map(m => {
-      const paid = (m.paid||0);
-      const owes = perPerson - paid;
-      return `<div class="card" style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
-        <div style="width:36px;height:36px;border-radius:50%;background:var(--sky);color:white;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;flex-shrink:0;">${m.name[0].toUpperCase()}</div>
-        <div style="flex:1;">
-          <div style="font-weight:600;font-size:14px;">${m.name}</div>
-          <div style="font-size:11px;color:var(--muted);">Paid: ${fmtCurrency(paid,cur)}</div>
-        </div>
-        <div style="text-align:right;">
-          <div style="font-size:13px;font-weight:700;color:${owes>0?'var(--red)':'var(--green)'};">${owes>0?'Owes':'Gets back'}<br>${fmtCurrency(Math.abs(owes),cur)}</div>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:4px;">
-          <button onclick="recordPayment('${trip.id}','${m.id}',${perPerson})" style="background:var(--green-light);color:var(--green);border:1px solid var(--green);border-radius:6px;padding:3px 6px;font-size:10px;font-weight:700;cursor:pointer;">Paid</button>
-          <span onclick="removeMember('${trip.id}','${m.id}')" style="color:var(--muted);font-size:14px;cursor:pointer;text-align:center;">×</span>
-        </div>
-      </div>`;
-    }).join('')}`;
-}
-
-function addMember() {
-  const trip = getActiveTrip('split');
-  if (!trip) { showToast('Select a trip first'); return; }
-  const name = document.getElementById('inp-member-name').value.trim();
-  if (!name) { showToast('Enter a name'); return; }
-  if (!state.groupMembers[trip.id]) state.groupMembers[trip.id] = [];
-  state.groupMembers[trip.id].push({id:uid(), name, paid:0});
-  save(); renderSplit(); closeSheet('sheet-add-member');
-  document.getElementById('inp-member-name').value='';
-  showToast(`${name} added ✅`);
-}
-
-function recordPayment(tripId, memberId, amount) {
-  const m = (state.groupMembers[tripId]||[]).find(x=>x.id===memberId);
-  if (m) { m.paid = amount; save(); renderSplit(); showToast('Payment recorded ✅'); }
-}
-
-function removeMember(tripId, memberId) {
-  state.groupMembers[tripId] = (state.groupMembers[tripId]||[]).filter(m=>m.id!==memberId);
-  save(); renderSplit();
-}
-
 // ============= AIRPORT LOUNGE TRACKER =============
 const CYCLE_LABELS = { calendar: 'Calendar Year', anniversary: 'Card Anniversary', quarter: 'Per Quarter', never: 'Lifetime' };
 
@@ -3961,36 +3882,18 @@ function deleteVisit(cardId, progId, visitId) {
 
 // ============= GLOBAL ERROR HANDLING =============
 // Catches any bug that wasn't already wrapped in a try/catch so it surfaces
-// as a toast instead of failing silently with only a console entry.
-window.addEventListener('error', function(e) {
-  console.error('Unhandled error:', e.error || e.message);
-  showToast('⚠️ Something went wrong — your data is safe, please retry');
-});
-window.addEventListener('unhandledrejection', function(e) {
-  console.error('Unhandled promise rejection:', e.reason);
-  showToast('⚠️ Something went wrong — your data is safe, please retry');
-});
+window.addEventListener('error',e=>{console.error(e.error||e.message);showToast('⚠️ Something went wrong — your data is safe');});
+window.addEventListener('unhandledrejection',e=>{console.error(e.reason);showToast('⚠️ Something went wrong — your data is safe');});
 
 // INIT
 load();
-if (!state.customPackCats) state.customPackCats = [];
-if (!state.customExpCats) state.customExpCats = [];
-if (!state.reminders) state.reminders = [];
-if (!state.documents) state.documents = {};
-if (!state.groupMembers) state.groupMembers = {};
-if (!state.loungeCards) state.loungeCards = [];
-if (!state.deletedPackItems) state.deletedPackItems = [];
-if (!state.deletedReminders) state.deletedReminders = [];
-if (!state.deletedTrips) state.deletedTrips = [];
-if (!state.deletedExpenses) state.deletedExpenses = [];
-if (!state.exchangeRates) state.exchangeRates = {};
-if (!state.activeTripId.docs) state.activeTripId.docs = state.activeTripId.it;
-if (!state.activeTripId.split) state.activeTripId.split = state.activeTripId.it;
-renderAll();
-populatePackCatSelect();
-populateExpCatSelects();
-rescheduleAll();
-if ('Notification' in window) notifPermission = Notification.permission;
+// Safe state defaults after load
+if(!state.activeTripId||typeof state.activeTripId!=='object') state.activeTripId={it:null,pk:null,bg:null,fl:null,docs:null};
+['customPackCats','customExpCats','reminders','loungeCards','deletedPackItems','deletedReminders','deletedTrips','deletedExpenses'].forEach(k=>{if(!state[k])state[k]=k.includes('List')||k.includes('Items')||k.includes('Cats')||k.includes('Cards')||k.includes('inders')||k.includes('Trips')||k.includes('Expenses')?[]:[];});
+if(!state.documents)state.documents={};if(!state.exchangeRates)state.exchangeRates={};
+['it','pk','bg','fl','docs'].forEach(k=>{if(!state.activeTripId[k])state.activeTripId[k]=state.trips[0]?.id||null;});
+renderAll();populatePackCatSelect();populateExpCatSelects();rescheduleAll();
+if('Notification'in window)notifPermission=Notification.permission;
 </script>
 </body>
 </html>
