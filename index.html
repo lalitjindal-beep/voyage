@@ -1249,7 +1249,10 @@ function save() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     hasUnsavedChanges = true;
     showBackupReminder();
-  } catch(e) {}
+  } catch(e) {
+    console.error('Save failed:', e);
+    showToast('⚠️ Could not save — storage may be full');
+  }
 }
 
 function markSaved() {
@@ -1284,7 +1287,10 @@ function load() {
   try {
     const d = localStorage.getItem(STORAGE_KEY);
     if (d) { const p = JSON.parse(d); state = { ...state, ...p }; }
-  } catch(e) {}
+  } catch(e) {
+    console.error('Load failed:', e);
+    showToast('⚠️ Saved data could not be read — starting fresh');
+  }
 }
 
 // ============= TABS =============
@@ -1306,6 +1312,7 @@ function closeSheet(id) {
 // ============= TOAST =============
 function showToast(msg) {
   const t = document.getElementById('toast');
+  if (!t) { console.warn('Toast element missing:', msg); return; }
   t.textContent = msg;
   t.classList.add('show');
   setTimeout(() => t.classList.remove('show'), 2200);
@@ -3827,6 +3834,18 @@ function deleteVisit(cardId, progId, visitId) {
   save(); renderLoungeCards(); renderVisitHistory(cardId, progId);
   showToast('Visit removed');
 }
+
+// ============= GLOBAL ERROR HANDLING =============
+// Catches any bug that wasn't already wrapped in a try/catch so it surfaces
+// as a toast instead of failing silently with only a console entry.
+window.addEventListener('error', function(e) {
+  console.error('Unhandled error:', e.error || e.message);
+  showToast('⚠️ Something went wrong — your data is safe, please retry');
+});
+window.addEventListener('unhandledrejection', function(e) {
+  console.error('Unhandled promise rejection:', e.reason);
+  showToast('⚠️ Something went wrong — your data is safe, please retry');
+});
 
 // INIT
 load();
