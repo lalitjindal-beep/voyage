@@ -492,6 +492,22 @@
       <div><div class="trip-selector-label">Current Trip</div><div class="trip-selector-name" id="sel-trip-bg">Select a trip</div></div>
       <span class="trip-selector-arrow">›</span>
     </div>
+    <!-- SEARCH + SORT -->
+    <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <div style="position:relative;flex:1;">
+        <span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);font-size:16px;pointer-events:none;">🔍</span>
+        <input class="form-input" id="exp-search" placeholder="Search expenses…" style="padding-left:40px;" oninput="renderBudget()" />
+      </div>
+      <select id="exp-sort" class="form-select" style="width:auto;flex-shrink:0;padding:13px 30px 13px 12px;font-size:13px;font-weight:600;color:var(--sky-dark);" onchange="renderBudget()">
+        <option value="date-desc">Newest first</option>
+        <option value="date-asc">Oldest first</option>
+        <option value="amount-desc">Amount: High → Low</option>
+        <option value="amount-asc">Amount: Low → High</option>
+        <option value="name-asc">Name: A → Z</option>
+        <option value="name-desc">Name: Z → A</option>
+        <option value="cat-asc">Category</option>
+      </select>
+    </div>
     <!-- Exchange rate banner -->
     <div id="exchange-rate-banner" style="display:none;background:var(--sky-light);border:1.5px solid var(--sky);border-radius:12px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
       <div style="font-size:11px;color:var(--sky-dark);line-height:1.5;">
@@ -788,6 +804,7 @@
     <!-- Multi-item rows -->
     <div style="font-size:12px;font-weight:700;color:var(--mid);margin-bottom:8px;">ITEMS <span style="font-weight:400;color:var(--muted);">(add as many as needed)</span></div>
     <div id="multi-expense-rows"></div>
+    <div id="exp-duplicate-warning" style="display:none;margin-bottom:10px;background:#FEF6E4;border:1.5px solid #E8A83E;border-radius:10px;padding:9px 12px;font-size:13px;color:#7a5c00;"></div>
     <button onclick="addExpenseRow()" style="width:100%;padding:10px;border:1.5px dashed var(--border);border-radius:10px;background:none;color:var(--sky);font-size:13px;font-weight:600;cursor:pointer;margin-bottom:14px;">+ Add Another Item</button>
 
     <!-- Running total -->
@@ -808,7 +825,8 @@
   <div class="sheet-body">
     <input type="hidden" id="edit-exp-trip-id" />
     <input type="hidden" id="edit-exp-id" />
-    <div class="form-group"><label class="form-label">Description</label><input class="form-input" id="edit-exp-name" placeholder="e.g. Dinner at restaurant" /></div>
+    <div class="form-group"><label class="form-label">Description</label><input class="form-input" id="edit-exp-name" placeholder="e.g. Dinner at restaurant" oninput="checkDuplicateExpenseEdit(this.value)" /></div>
+    <div id="edit-exp-duplicate-warning" style="display:none;margin-top:-6px;margin-bottom:10px;background:#FEF6E4;border:1.5px solid #E8A83E;border-radius:10px;padding:9px 12px;font-size:13px;color:#7a5c00;"></div>
     <div class="form-group"><label class="form-label">Amount</label><input class="form-input" id="edit-exp-amount" type="number" placeholder="0.00" step="0.01" /></div>
     <div class="form-group">
       <label class="form-label">Paid In</label>
@@ -1878,19 +1896,52 @@ function renderBudget() {
   const total = expenses.reduce((s,e) => s + (e.amountBase ?? e.amount), 0);
   const left = (trip.budget||0) - total;
   updateBudgetBoxes(trip.budget, total, left, cur);
-  const filtered = activeExpenseFilter === 'All' ? expenses : expenses.filter(e => e.cat === activeExpenseFilter);
+  const catFiltered = activeExpenseFilter === 'All' ? expenses : expenses.filter(e => e.cat === activeExpenseFilter);
+
+  // Search filter
+  const q = (document.getElementById('exp-search')?.value || '').trim().toLowerCase();
+  const filtered = q ? catFiltered.filter(e => e.name.toLowerCase().includes(q)) : catFiltered;
+
   if (!filtered.length) {
-    container.innerHTML = `<div class="empty-state"><div class="emoji">🧾</div><p>No expenses${activeExpenseFilter !== 'All' ? ' in this category' : ' yet'}<br>Tap + to add one</p></div>`;
+    if (q) {
+      container.innerHTML = `<div class="empty-state"><div class="emoji">🔍</div><p>No expenses match "<b>${q}</b>"<br><span style="font-size:13px;">This item hasn't been added yet</span></p></div>`;
+    } else {
+      container.innerHTML = `<div class="empty-state"><div class="emoji">🧾</div><p>No expenses${activeExpenseFilter !== 'All' ? ' in this category' : ' yet'}<br>Tap + to add one</p></div>`;
+    }
     return;
   }
-  container.innerHTML = [...filtered].reverse().map(e => {
+
+  // Sort
+  const sortMode = document.getElementById('exp-sort')?.value || 'date-desc';
+  const sorted = [...filtered];
+  sorted.sort((a, b) => {
+    switch (sortMode) {
+      case 'date-asc':    return (a.date||'').localeCompare(b.date||'');
+      case 'date-desc':   return (b.date||'').localeCompare(a.date||'');
+      case 'amount-asc':  return (a.amountBase ?? a.amount) - (b.amountBase ?? b.amount);
+      case 'amount-desc': return (b.amountBase ?? b.amount) - (a.amountBase ?? a.amount);
+      case 'name-asc':    return a.name.localeCompare(b.name);
+      case 'name-desc':   return b.name.localeCompare(a.name);
+      case 'cat-asc':     return a.cat.localeCompare(b.cat) || (b.date||'').localeCompare(a.date||'');
+      default:            return 0;
+    }
+  });
+
+  // Highlight matching text
+  function hl(text) {
+    if (!q) return text;
+    const re = new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')})`, 'gi');
+    return text.replace(re, '<mark style="background:#FFF176;border-radius:3px;padding:0 2px;">$1</mark>');
+  }
+
+  container.innerHTML = sorted.map(e => {
     const eCur = e.currency || cur;
     const isForeign = eCur !== cur;
     const orig = isForeign ? `<div style="font-size:10px;color:var(--muted);">${fmtCurrency(e.amount, eCur)}</div>` : '';
     return `<div class="expense-item">
       <div class="expense-icon ${CAT_COLORS[e.cat] || 'cat-other'}">${CAT_ICONS[e.cat] || '🏷'}</div>
       <div class="expense-body">
-        <div class="expense-name">${e.name}${isForeign?` <span style="font-size:9px;background:var(--sky-light);color:var(--sky-dark);border-radius:4px;padding:1px 5px;font-weight:700;">${eCur}</span>`:''}</div>
+        <div class="expense-name">${hl(e.name)}${isForeign?` <span style="font-size:9px;background:var(--sky-light);color:var(--sky-dark);border-radius:4px;padding:1px 5px;font-weight:700;">${eCur}</span>`:''}</div>
         <div class="expense-cat">${e.cat}${e.date ? ' · ' + fmt(e.date) : ''}</div>
       </div>
       <div style="display:flex;align-items:center;gap:6px;">
@@ -1955,6 +2006,24 @@ function selectExpCurrency(c) {
   renderExpCurrencyChips();
 }
 
+// ---- DUPLICATE CHECK (EXPENSES) ----
+function checkDuplicateExpense(val) {
+  const warn = document.getElementById('exp-duplicate-warning');
+  if (!warn) return;
+  const trip = getActiveTrip('bg');
+  if (!trip || !val.trim()) { warn.style.display = 'none'; return; }
+  const q = val.trim().toLowerCase();
+  const expenses = state.expenses[trip.id] || [];
+  const matches = expenses.filter(e => e.name.toLowerCase().includes(q));
+  if (matches.length) {
+    warn.style.display = 'block';
+    warn.innerHTML = `⚠️ Similar expense${matches.length > 1 ? 's' : ''} already logged:<br>` +
+      matches.map(m => `&nbsp;&nbsp;• <b>${m.name}</b> <span style="color:#a07820;">(${fmtCurrency(m.amount, m.currency || trip.currency)} · ${m.cat})</span>`).join('<br>');
+  } else {
+    warn.style.display = 'none';
+  }
+}
+
 // ---- MULTI-ITEM EXPENSE ROWS ----
 let expRowCount = 0;
 
@@ -1966,7 +2035,7 @@ function addExpenseRow(name='', amount='') {
   div.id = id;
   div.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:8px;';
   div.innerHTML = `
-    <input class="form-input" placeholder="Description" value="${name}" style="flex:2;font-size:13px;" oninput="updateMultiTotal()" />
+    <input class="form-input" placeholder="Description" value="${name}" style="flex:2;font-size:13px;" oninput="updateMultiTotal();checkDuplicateExpense(this.value)" />
     <input class="form-input" type="number" placeholder="Amount" value="${amount}" step="0.01" style="flex:1;font-size:13px;" oninput="updateMultiTotal()" />
     <button onclick="document.getElementById('${id}').remove();updateMultiTotal();" style="width:32px;height:44px;background:var(--red-light);color:var(--red);border:none;border-radius:10px;font-size:16px;cursor:pointer;flex-shrink:0;">×</button>`;
   container.appendChild(div);
@@ -2285,6 +2354,8 @@ function resetExpenseForm() {
   expRowCount = 0;
   const totalBox = document.getElementById('multi-expense-total');
   if (totalBox) totalBox.style.display = 'none';
+  const warn = document.getElementById('exp-duplicate-warning');
+  if (warn) warn.style.display = 'none';
   // Reset date to today
   document.getElementById('inp-exp-date').value = new Date().toISOString().slice(0,10);
   // Reset bill scan
@@ -2386,6 +2457,23 @@ async function scanBill(event) {
 }
 
 // ---- EDIT EXPENSE ----
+function checkDuplicateExpenseEdit(val) {
+  const warn = document.getElementById('edit-exp-duplicate-warning');
+  if (!warn) return;
+  const tripId = document.getElementById('edit-exp-trip-id').value;
+  const expId = document.getElementById('edit-exp-id').value;
+  if (!tripId || !val.trim()) { warn.style.display = 'none'; return; }
+  const q = val.trim().toLowerCase();
+  const expenses = (state.expenses[tripId] || []).filter(e => e.id !== expId);
+  const matches = expenses.filter(e => e.name.toLowerCase().includes(q));
+  if (matches.length) {
+    const trip = state.trips.find(t=>t.id===tripId);
+    warn.style.display = 'block';
+    warn.innerHTML = `⚠️ Similar expense${matches.length > 1 ? 's' : ''} already logged:<br>` +
+      matches.map(m => `&nbsp;&nbsp;• <b>${m.name}</b> <span style="color:#a07820;">(${fmtCurrency(m.amount, m.currency || trip?.currency)} · ${m.cat})</span>`).join('<br>');
+  } else { warn.style.display = 'none'; }
+}
+
 function openEditExpense(tripId, expId) {
   const exp = (state.expenses[tripId] || []).find(e => e.id === expId);
   if (!exp) return;
@@ -2400,6 +2488,8 @@ function openEditExpense(tripId, expId) {
   const expCur = exp.currency || baseCur;
   document.getElementById('edit-exp-currency').value = expCur;
   renderEditExpCurrencyChips(tripId, expCur);
+  const warn = document.getElementById('edit-exp-duplicate-warning');
+  if (warn) warn.style.display = 'none';
   openSheet('sheet-edit-expense');
 }
 
@@ -3316,6 +3406,12 @@ function doSharePDF() {
 }
 
 // ============= DASHBOARD =============
+let dashExpandedTrips = new Set();
+function toggleDashAnalysis(tripId) {
+  dashExpandedTrips.has(tripId) ? dashExpandedTrips.delete(tripId) : dashExpandedTrips.add(tripId);
+  renderDashboard();
+}
+
 function renderDashboard() {
   const container = document.getElementById('dashboard-content');
   if (!container) return;
@@ -3336,6 +3432,29 @@ function renderDashboard() {
     const daysLeft = t.end ? Math.ceil((new Date(t.end+'T12:00') - now)/(1000*60*60*24)) : null;
     const isActive = t.start && t.end && now >= new Date(t.start+'T12:00') && now <= new Date(t.end+'T12:00');
     const cur = t.currency || '';
+
+    // ---- Spend analysis ----
+    const catTotals = {};
+    expenses.forEach(e => { const amt = e.amountBase ?? e.amount; catTotals[e.cat] = (catTotals[e.cat] || 0) + amt; });
+    const catRows = Object.keys(catTotals).sort((a,b) => catTotals[b] - catTotals[a]).map(cat => {
+      const amt = catTotals[cat], share = spent ? Math.round((amt/spent)*100) : 0;
+      return `<div style="margin-bottom:7px;">
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:2px;"><span>${CAT_ICONS[cat]||'📌'} ${cat}</span><span>${fmtCurrency(amt,cur)} · ${share}%</span></div>
+        <div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden;"><div style="height:100%;width:${share}%;background:var(--sky);border-radius:3px;"></div></div>
+      </div>`;
+    }).join('');
+
+    const biggest = expenses.length ? [...expenses].sort((a,b) => (b.amountBase??b.amount) - (a.amountBase??a.amount))[0] : null;
+    const tripDays = (t.start && t.end) ? Math.max(1, Math.round((new Date(t.end+'T12:00') - new Date(t.start+'T12:00'))/(1000*60*60*24)) + 1) : null;
+    const avgPerDay = tripDays && spent ? spent / tripDays : null;
+    const expanded = dashExpandedTrips.has(t.id);
+    const analysisHtml = !expenses.length ? `<div style="font-size:12px;color:var(--muted);padding:6px 0;">No expenses logged yet</div>` : `
+      ${catRows}
+      <div style="display:flex;gap:8px;margin-top:10px;">
+        ${biggest ? `<div style="flex:1;background:var(--surface2);border-radius:10px;padding:8px 10px;"><div style="font-size:9px;color:var(--muted);font-weight:700;">BIGGEST EXPENSE</div><div style="font-size:12px;font-weight:700;margin-top:2px;">${biggest.name}</div><div style="font-size:11px;color:var(--sky-dark);">${fmtCurrency(biggest.amountBase??biggest.amount,cur)}</div></div>` : ''}
+        ${avgPerDay ? `<div style="flex:1;background:var(--surface2);border-radius:10px;padding:8px 10px;"><div style="font-size:9px;color:var(--muted);font-weight:700;">AVG SPEND / DAY</div><div style="font-size:14px;font-weight:700;margin-top:2px;color:var(--sky-dark);">${fmtCurrency(avgPerDay,cur)}</div><div style="font-size:10px;color:var(--muted);">over ${tripDays} day${tripDays>1?'s':''}</div></div>` : ''}
+      </div>`;
+
     return `<div class="card" style="margin-bottom:14px;">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
         <span style="font-size:28px;">${t.emoji}</span>
@@ -3364,10 +3483,15 @@ function renderDashboard() {
         <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px;"><span>Budget</span><span>${fmtCurrency(spent,cur)} / ${fmtCurrency(budget,cur)}</span></div>
         <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;"><div style="height:100%;width:${pct}%;background:${pct>90?'var(--red)':'var(--sky)'};border-radius:3px;transition:width 0.4s;"></div></div>
       </div>
-      <div>
+      <div style="margin-bottom:${expanded?'10px':'0'};">
         <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px;"><span>Packing</span><span>${packed}/${packItems.length} items</span></div>
         <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;"><div style="height:100%;width:${packPct}%;background:var(--sand);border-radius:3px;transition:width 0.4s;"></div></div>
       </div>
+      <div onclick="toggleDashAnalysis('${t.id}')" style="display:flex;align-items:center;justify-content:center;gap:5px;padding:8px 0 2px;cursor:pointer;border-top:1px solid var(--border);margin-top:8px;">
+        <span style="font-size:11px;font-weight:700;color:var(--sky);">${expanded?'Hide':'Analyse'} Spending</span>
+        <span style="font-size:11px;color:var(--sky);transform:rotate(${expanded?'180':'0'}deg);transition:transform 0.2s;">▾</span>
+      </div>
+      ${expanded ? `<div style="margin-top:8px;">${analysisHtml}</div>` : ''}
     </div>`;
   }).join('');
 
