@@ -183,23 +183,24 @@
   .hotel-dates { font-size: 12px; color: var(--muted); margin-top: 3px; }
   .hotel-ref { font-size: 12px; color: var(--sky); margin-top: 5px; font-weight: 500; }
   .hotel-del { color: var(--muted); font-size: 16px; cursor: pointer; align-self: flex-start; padding: 4px; }
-  .lounge-card { background: linear-gradient(135deg,#1E2D3D,#2C3E50); border-radius: 16px; padding: 16px; margin-bottom: 14px; color: white; box-shadow: var(--shadow); }
+  .lounge-card { background: white; border: 1.5px solid var(--border); border-radius: 16px; padding: 16px; margin-bottom: 14px; box-shadow: var(--shadow); }
   .lounge-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px; }
-  .lounge-card-name { font-size: 15px; font-weight: 700; }
-  .lounge-card-digits { font-size: 13px; color: rgba(255,255,255,0.65); font-family: monospace; letter-spacing: 1px; margin-top: 2px; }
-  .lounge-card-bank { font-size: 11px; color: rgba(255,255,255,0.5); margin-top: 2px; }
-  .lounge-prog-row { background: rgba(255,255,255,0.1); border-radius: 12px; padding: 10px 12px; margin-top: 10px; }
+  .lounge-card-name { font-size: 15px; font-weight: 700; color: var(--slate); }
+  .lounge-card-digits { font-size: 13px; color: var(--muted); font-family: monospace; letter-spacing: 1px; margin-top: 2px; }
+  .lounge-card-bank { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .lounge-prog-row { background: var(--sky-light); border: 1px solid #C8DEFF; border-radius: 12px; padding: 10px 12px; margin-top: 10px; }
   .lounge-prog-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
-  .lounge-prog-name { font-size: 13px; font-weight: 600; }
+  .lounge-prog-name { font-size: 13px; font-weight: 600; color: var(--slate); }
   .lounge-prog-remaining { font-size: 13px; font-weight: 800; }
-  .lounge-prog-remaining.low { color: #FF8A8A; }
-  .lounge-prog-remaining.ok { color: #8AFFB0; }
-  .lounge-prog-bar { height: 5px; background: rgba(255,255,255,0.2); border-radius: 3px; overflow: hidden; margin-bottom: 6px; }
+  .lounge-prog-remaining.low { color: var(--red); }
+  .lounge-prog-remaining.ok { color: var(--green); }
+  .lounge-prog-bar { height: 6px; background: #D0E8FF; border-radius: 3px; overflow: hidden; margin-bottom: 6px; }
   .lounge-prog-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
-  .lounge-prog-meta { font-size: 10px; color: rgba(255,255,255,0.55); display: flex; justify-content: space-between; }
-  .lounge-visit-chip { background: rgba(255,255,255,0.15); border-radius: 8px; padding: 6px 0; text-align: center; font-size: 11px; font-weight: 600; cursor: pointer; margin-top: 8px; }
+  .lounge-prog-meta { font-size: 10px; color: var(--muted); display: flex; justify-content: space-between; }
+  .lounge-visit-chip { background: var(--sky); color: white; border-radius: 8px; padding: 7px 0; text-align: center; font-size: 12px; font-weight: 600; cursor: pointer; margin-top: 8px; }
   .lounge-card-actions { display: flex; gap: 8px; margin-top: 10px; }
-  .lounge-card-actions button { flex: 1; background: rgba(255,255,255,0.12); color: white; border: none; border-radius: 8px; padding: 7px 0; font-size: 11px; font-weight: 600; cursor: pointer; }
+  .lounge-card-actions button { flex: 1; background: var(--surface2); color: var(--sky-dark); border: 1px solid var(--border); border-radius: 8px; padding: 8px 0; font-size: 11px; font-weight: 600; cursor: pointer; }
+  .lounge-period-row { display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid #D0E8FF; }
   /* CALENDAR VIEW */
   .cal-grid { display: grid; grid-template-columns: repeat(7,1fr); gap: 3px; margin-bottom: 16px; }
   .cal-header-cell { text-align: center; font-size: 11px; font-weight: 700; color: var(--muted); padding: 5px 0; }
@@ -2033,7 +2034,7 @@ function saveMultiExpense() {
     const name = inputs[0]?.value.trim();
     const amount = parseFloat(inputs[1]?.value);
     if (name && amount) {
-      state.expenses[trip.id].push({ id: uid(), name, amount, amountBase: amount * rate, cat, date, currency: expCur });
+      state.expenses[trip.id].push({ id: uid(), name, amount, amountBase: amount*rate, cat, date, currency: expCur, payMethod: selectedPayMethod, cardName: selectedPayMethod==='💳 Credit Card'?(document.getElementById('inp-exp-card-name')?.value.trim()||''):'' });
       count++;
     }
   });
@@ -2438,6 +2439,9 @@ function saveEditExpense() {
     exp.date = document.getElementById('edit-exp-date').value;
     exp.currency = expCur;
     exp.amountBase = amount * rate;
+    const pm = document.getElementById('edit-exp-pay-method')?.value || selectedEditPayMethod || '💵 Cash';
+    exp.payMethod = pm;
+    exp.cardName = pm === '💳 Credit Card' ? (document.getElementById('edit-exp-card-name')?.value.trim()||'') : '';
   }
   save(); renderBudget();
   closeSheet('sheet-edit-expense');
@@ -3492,23 +3496,25 @@ function renderLoungeSummary() {
   let allPrograms = [];
   cards.forEach(c => (c.programs||[]).forEach(p => {
     const used = getUsedVisits(p);
-    const remaining = Math.max(0, p.limit - used);
-    allPrograms.push({ cardName: c.name, digits: c.digits, progName: p.name, remaining, limit: p.limit });
+    const lim = getVisitLimitForNow(p);
+    const remaining = Math.max(0, lim - used);
+    allPrograms.push({ cardName: c.name, digits: c.digits, progName: p.name, remaining, limit: lim });
   }));
   if (!allPrograms.length) { summaryEl.innerHTML = ''; return; }
   const totalRemaining = allPrograms.reduce((s,p)=>s+p.remaining,0);
+  const totalLeft = totalRemaining;
   const usedUp = allPrograms.filter(p=>p.remaining===0).length;
   const lowOnes = allPrograms.filter(p=>p.remaining>0 && p.remaining<=1).sort((a,b)=>a.remaining-b.remaining);
   summaryEl.innerHTML = `
-    <div class="card" style="background:linear-gradient(135deg,#1E2D3D,#2C3E50);color:white;border:none;margin-bottom:14px;">
+    <div class="card" style="background:linear-gradient(135deg,#EBF4FF,#F0F8FF);color:var(--slate);border:1.5px solid #C8DEFF;margin-bottom:14px;">
       <div style="display:flex;justify-content:space-around;text-align:center;margin-bottom:${lowOnes.length?'12px':'0'};">
-        <div><div style="font-size:22px;font-weight:800;">${cards.length}</div><div style="font-size:10px;opacity:0.7;">Cards</div></div>
-        <div><div style="font-size:22px;font-weight:800;color:#8AFFB0;">${totalRemaining}</div><div style="font-size:10px;opacity:0.7;">Visits Left</div></div>
-        <div><div style="font-size:22px;font-weight:800;color:${usedUp?'#FF8A8A':'#8AFFB0'};">${usedUp}</div><div style="font-size:10px;opacity:0.7;">Used Up</div></div>
+        <div><div style="font-size:22px;font-weight:800;color:var(--sky-dark);">${cards.length}</div><div style="font-size:10px;color:var(--muted);">Cards</div></div>
+        <div><div style="font-size:22px;font-weight:800;color:var(--green);">${totalRemaining}</div><div style="font-size:10px;color:var(--muted);">Visits Left</div></div>
+        <div><div style="font-size:22px;font-weight:800;color:${usedUp?'var(--red)':'var(--green)'};">${usedUp}</div><div style="font-size:10px;color:var(--muted);">Used Up</div></div>
       </div>
-      ${lowOnes.length ? `<div style="border-top:1px solid rgba(255,255,255,0.15);padding-top:10px;">
-        <div style="font-size:11px;font-weight:700;opacity:0.85;margin-bottom:6px;">⚠️ RUNNING LOW</div>
-        ${lowOnes.slice(0,4).map(p=>`<div style="font-size:12px;display:flex;justify-content:space-between;padding:3px 0;"><span>${p.cardName} (•${p.digits}) — ${p.progName}</span><span style="font-weight:700;color:#FF8A8A;">${p.remaining} left</span></div>`).join('')}
+      ${lowOnes.length ? `<div style="border-top:1px solid #C8DEFF;padding-top:10px;">
+        <div style="font-size:11px;font-weight:700;color:var(--red);margin-bottom:6px;">⚠️ RUNNING LOW</div>
+        ${lowOnes.slice(0,4).map(p=>`<div style="font-size:12px;display:flex;justify-content:space-between;padding:3px 0;color:var(--mid);"><span>${p.cardName} (•${p.digits}) — ${p.progName}</span><span style="font-weight:700;color:var(--red);">${p.remaining} left</span></div>`).join('')}
       </div>` : ''}
     </div>`;
 }
@@ -3536,7 +3542,7 @@ function renderLoungeCards() {
     visibleCards = visibleCards.map(({card,programs}) => {
       const filtered = programs.filter(p => {
         const used = getUsedVisits(p);
-        const remaining = Math.max(0, p.limit - used);
+        const remaining = Math.max(0, getVisitLimitForNow(p) - used);
         return loungeFilter === 'available' ? remaining > 1 : remaining <= 1;
       });
       return { card, programs: filtered };
@@ -3569,8 +3575,8 @@ function renderLoungeCards() {
         const resetLabel = p.cycle==='never'?'No reset':`Resets ${end.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}`;
         const periodsHtml = periods.length > 1 ? periods.map(q=>`
           <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.08);">
-            <span style="font-size:10px;color:rgba(255,255,255,.65);">${q.label}${q.isCurrent?' ◀ now':''}</span>
-            <span style="font-size:11px;font-weight:700;color:${Math.max(0,q.limit-q.used)<=1?'#FF8A8A':'#8AFFB0'};">${q.used}/${q.limit} · ${Math.max(0,q.limit-q.used)} left</span>
+            <span style="font-size:10px;color:var(--muted);">${q.label}${q.isCurrent?' ◀ now':''}</span>
+            <span style="font-size:11px;font-weight:700;color:${Math.max(0,q.limit-q.used)<=1?'var(--red)':'var(--green)'};">${q.used}/${q.limit} · ${Math.max(0,q.limit-q.used)} left</span>
           </div>`).join('') : '';
         return `<div class="lounge-prog-row">
           <div class="lounge-prog-header">
@@ -3640,11 +3646,12 @@ function openAddProgram(cardId) {
   document.getElementById('prog-card-id').value = cardId;
   document.getElementById('edit-prog-id').value = '';
   document.getElementById('inp-prog-name').value = '';
-  document.getElementById('inp-prog-limit').value = '';
   document.getElementById('inp-prog-cycle').value = 'calendar';
   document.getElementById('inp-prog-anniv-date').value = '';
   document.getElementById('prog-anniv-group').style.display = 'none';
   document.getElementById('program-delete-btn').style.display = 'none';
+  document.getElementById('prog-sheet-title').textContent = 'Add Lounge Program';
+  renderProgLimitFields('calendar');
   openSheet('sheet-add-program');
 }
 function editProgram(cardId, progId) {
@@ -3654,11 +3661,13 @@ function editProgram(cardId, progId) {
   document.getElementById('prog-card-id').value = cardId;
   document.getElementById('edit-prog-id').value = progId;
   document.getElementById('inp-prog-name').value = prog.name;
-  document.getElementById('inp-prog-limit').value = prog.limit;
   document.getElementById('inp-prog-cycle').value = prog.cycle;
   document.getElementById('inp-prog-anniv-date').value = prog.annivDate||'';
   document.getElementById('prog-anniv-group').style.display = prog.cycle==='anniversary'?'block':'none';
   document.getElementById('program-delete-btn').style.display = 'block';
+  document.getElementById('prog-sheet-title').textContent = 'Edit Program';
+  renderProgLimitFields(prog.cycle);
+  fillProgLimits(prog.cycle, prog.limits);
   openSheet('sheet-add-program');
 }
 function saveProgram() {
@@ -3700,7 +3709,7 @@ function openLogVisit(cardId, progId) {
   document.getElementById('visit-prog-id').value = progId;
   const used = getUsedVisits(prog);
   const remaining = Math.max(0, getVisitLimitForNow(prog) - used);
-  document.getElementById('visit-prog-info').innerHTML = `${card.name} — ${prog.name}<br><span style="font-size:13px;color:var(--sky);font-weight:700;">${remaining} visits left this period (${CYCLE_LABELS[prog.cycle]})</span>`;
+  document.getElementById('visit-prog-info').innerHTML = card.name+' — '+prog.name+'<br><span style="font-size:13px;color:var(--sky);font-weight:700;">'+remaining+' visits left this period ('+CYCLE_LABELS[prog.cycle]+')</span>';
   document.getElementById('inp-visit-date').value = new Date().toISOString().slice(0,10);
   document.getElementById('inp-visit-place').value = '';
   renderVisitHistory(cardId, progId);
@@ -3738,7 +3747,7 @@ function logVisit() {
   renderVisitHistory(cardId, progId);
   const used = getUsedVisits(prog);
   const remaining = Math.max(0, prog.limit - used);
-  document.getElementById('visit-prog-info').innerHTML = `${card.name} — ${prog.name}<br><span style="font-size:13px;color:var(--sky);font-weight:700;">${remaining} visits left this period (${CYCLE_LABELS[prog.cycle]})</span>`;
+  document.getElementById('visit-prog-info').innerHTML = card.name+' — '+prog.name+'<br><span style="font-size:13px;color:var(--sky);font-weight:700;">'+remaining+' visits left this period ('+CYCLE_LABELS[prog.cycle]+')</span>';
   showToast(`Visit logged — ${remaining} left ✅`);
   document.getElementById('inp-visit-place').value = '';
 }
