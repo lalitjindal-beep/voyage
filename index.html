@@ -644,14 +644,16 @@
 <div class="overlay" id="overlay-sheet-activity" onclick="closeSheet('sheet-activity')"></div>
 <div class="sheet" id="sheet-activity">
   <div class="sheet-handle"></div>
-  <div class="sheet-title">Add Activity</div>
+  <div class="sheet-title" id="act-sheet-title">Add Activity</div>
   <div class="sheet-body">
-    <div class="form-group"><label class="form-label">Activity Name</label><input class="form-input" id="inp-act-name" placeholder="e.g. Visit Eiffel Tower" /></div>
+    <div id="act-date-banner" style="display:none;background:var(--sky-light);border-radius:10px;padding:9px 12px;margin-bottom:12px;font-size:13px;font-weight:600;color:var(--sky-dark);"></div>
+    <div class="form-group"><label class="form-label">Activity Name</label><input class="form-input" id="inp-act-name" placeholder="e.g. Visit Eiffel Tower"/></div>
     <div class="form-row">
-      <div class="form-group"><label class="form-label">Day</label><input class="form-input" id="inp-act-day" type="number" placeholder="1" min="1" /></div>
-      <div class="form-group"><label class="form-label">Time</label><input class="form-input" id="inp-act-time" type="time" /></div>
+      <div class="form-group"><label class="form-label">Day #</label><input class="form-input" id="inp-act-day" type="number" placeholder="1" min="1"/></div>
+      <div class="form-group"><label class="form-label">Date</label><input class="form-input" id="inp-act-date" type="date"/></div>
     </div>
-    <div class="form-group"><label class="form-label">Note (optional)</label><input class="form-input" id="inp-act-note" placeholder="e.g. Book tickets online" /></div>
+    <div class="form-group"><label class="form-label">Time</label><input class="form-input" id="inp-act-time" type="time"/></div>
+    <div class="form-group"><label class="form-label">Note (optional)</label><input class="form-input" id="inp-act-note" placeholder="e.g. Book tickets online"/></div>
     <button class="btn-primary" onclick="saveActivity()">Add Activity</button>
   </div>
 </div>
@@ -1495,7 +1497,7 @@ function fmt(d) {
 function quickSelectTrip(id) {
   ['it','pk','bg','fl','docs','split'].forEach(k => state.activeTripId[k] = id);
   calViewDate = new Date();
-  calViewDate._manualNav = false;
+  calManualNav = false;
   calSelectedDate = null;
   save(); renderAll();
   showToast('Trip selected ✓');
@@ -1529,20 +1531,22 @@ function saveActivity() {
   if (!trip) { showToast('Select a trip first'); return; }
   const name = document.getElementById('inp-act-name').value.trim();
   if (!name) { showToast('Enter activity name'); return; }
-  const act = {
-    id: uid(), name,
-    day: parseInt(document.getElementById('inp-act-day').value) || 1,
-    time: document.getElementById('inp-act-time').value,
-    note: document.getElementById('inp-act-note').value.trim()
-  };
+  const dateVal = document.getElementById('inp-act-date')?.value || '';
+  let dayNum = parseInt(document.getElementById('inp-act-day').value) || 0;
+  // Derive day number from date if not set but date is
+  if (!dayNum && dateVal && trip.start) {
+    const tripStart = new Date(trip.start+'T12:00');
+    const actDate = new Date(dateVal+'T12:00');
+    dayNum = Math.max(1, Math.round((actDate - tripStart)/864e5) + 1);
+  }
+  if (!dayNum) dayNum = 1;
+  const act = { id: uid(), name, day: dayNum, date: dateVal, time: document.getElementById('inp-act-time').value, note: document.getElementById('inp-act-note').value.trim() };
   state.itineraries[trip.id].push(act);
   save(); renderItinerary();
   closeSheet('sheet-activity');
   showToast('Activity added ✅');
-  document.getElementById('inp-act-name').value = '';
-  document.getElementById('inp-act-note').value = '';
-  document.getElementById('inp-act-time').value = '';
-  document.getElementById('inp-act-day').value = '';
+  ['inp-act-name','inp-act-note','inp-act-time','inp-act-day','inp-act-date'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  const banner=document.getElementById('act-date-banner');if(banner)banner.style.display='none';
 }
 function delActivity(tripId, actId) {
   state.itineraries[tripId] = state.itineraries[tripId].filter(a => a.id !== actId);
@@ -2146,6 +2150,27 @@ function openSheet(id, ctx) {
   else if (id === 'sheet-card-report') openCardReport();
   else if (id === 'sheet-money-in') { renderMoneyInList(); document.getElementById('inp-moneyin-date').value=new Date().toISOString().slice(0,10); }
   else if (id === 'sheet-add-doc') { document.getElementById('edit-doc-id').value=''; document.getElementById('doc-delete-btn').style.display='none'; }
+  else if (id === 'sheet-activity') {
+    const trip = getActiveTrip('it');
+    const banner = document.getElementById('act-date-banner');
+    const dayEl = document.getElementById('inp-act-day');
+    const dateEl = document.getElementById('inp-act-date');
+    if (calSelectedDate && trip && trip.start) {
+      const tripStart = new Date(trip.start+'T12:00');
+      const sel = new Date(calSelectedDate+'T12:00');
+      const dayNum = Math.round((sel - tripStart)/864e5) + 1;
+      if (dayNum >= 1) {
+        if (dayEl) dayEl.value = dayNum;
+        if (dateEl) dateEl.value = calSelectedDate;
+        const label = sel.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'});
+        if (banner) { banner.style.display='block'; banner.textContent='📅 Adding to: Day '+dayNum+' · '+label; }
+      }
+    } else {
+      if (banner) banner.style.display='none';
+      if (dayEl) dayEl.value='';
+      if (dateEl) dateEl.value='';
+    }
+  }
   else if (id === 'sheet-api-key') {
     const saved = getApiKey();
     document.getElementById('inp-api-key').value = saved ? '••••••••••••••••' : '';
@@ -2498,6 +2523,12 @@ function openEditExpense(tripId, expId) {
   const warn = document.getElementById('edit-exp-duplicate-warning');
   if (warn) warn.style.display = 'none';
   openSheet('sheet-edit-expense');
+  // Render payment method chips after sheet is visible
+  renderEditPayMethodChips(exp.payMethod || '💵 Cash');
+  const cnEl = document.getElementById('edit-exp-card-name');
+  if (cnEl) cnEl.value = exp.cardName || '';
+  const cnRow = document.getElementById('edit-card-name-row');
+  if (cnRow) cnRow.style.display = (exp.payMethod === '💳 Credit Card') ? 'block' : 'none';
 }
 function renderEditExpCurrencyChips(tripId, selectedCur) {
   const container = document.getElementById('edit-exp-currency-chips');
@@ -2841,9 +2872,9 @@ function renderCalendarView(trip, items, container) {
             <div class="activity-name">${a.name}</div>
             ${a.note?`<div class="activity-note">${a.note}</div>`:''}
           </div>
-          <span class="activity-del" onclick="delActivity('${trip.id}','${a.id}');calViewDate._manualNav=true;renderItinerary()">🗑</span>
+          <span class="activity-del" onclick="delActivity('${trip.id}','${a.id}');calManualNav=true;renderItinerary()">🗑</span>
         </div>`).join('')
-      : `<div style="font-size:13px;color:var(--muted);padding:8px 0;">No activities on this day.<br><span style="color:var(--sky);cursor:pointer;font-weight:600;" onclick="openSheet('sheet-activity')">+ Add one</span></div>`}
+      : `<div style="font-size:13px;color:var(--muted);padding:8px 0;">No activities on this day.<br><span style="color:var(--sky);cursor:pointer;font-weight:600;" onclick="openSheet('sheet-activity')">+ Add to this day</span></div>`}
     </div>`;
   }
   container.innerHTML = `
