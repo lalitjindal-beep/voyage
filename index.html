@@ -1210,13 +1210,13 @@
   <div class="sheet-handle"></div>
   <div class="sheet-title">🤖 AI Bill Scan Setup</div>
   <div class="sheet-body">
-    <div style="background:var(--sky-light);border-radius:12px;padding:14px;margin-bottom:16px;">
-      <div style="font-size:13px;font-weight:700;color:var(--sky-dark);margin-bottom:6px;">How to get your API key</div>
-      <div style="font-size:12px;color:var(--mid);line-height:1.6;">1. Go to <b>console.anthropic.com</b><br>2. Sign up / Log in (free)<br>3. API Keys → Create Key<br>4. Paste it below — stored only on your device</div>
+    <div style="background:#E8F5E9;border:1.5px solid #4CAF50;border-radius:12px;padding:14px;margin-bottom:16px;">
+      <div style="font-size:13px;font-weight:700;color:#1B5E20;margin-bottom:6px;">✅ Free — no credit card needed</div>
+      <div style="font-size:12px;color:#2E7D32;line-height:1.7;">1. Go to <b>aistudio.google.com</b><br>2. Sign in with Google (free)<br>3. Tap <b>Get API Key</b> → Create API key<br>4. Copy &amp; paste below<br><span style="opacity:.8;">Free: 1500 scans/day · 15/minute</span></div>
     </div>
     <div class="form-group">
-      <label class="form-label">Anthropic API Key</label>
-      <input class="form-input" id="inp-api-key" type="password" placeholder="sk-ant-api03-..." autocomplete="off" style="font-family:monospace;font-size:13px;letter-spacing:1px;"/>
+      <label class="form-label">Google Gemini API Key</label>
+      <input class="form-input" id="inp-api-key" type="password" placeholder="AIza..." autocomplete="off" style="font-family:monospace;font-size:13px;letter-spacing:1px;"/>
     </div>
     <div id="api-key-status" style="display:none;margin-bottom:12px;border-radius:10px;padding:10px 12px;font-size:12px;font-weight:600;"></div>
     <button class="btn-primary" onclick="saveApiKey()">Save & Test Key</button>
@@ -2338,8 +2338,8 @@ function updateApiKeyIndicator() {
   const key = getApiKey();
   const el = document.getElementById('api-key-indicator');
   if (!el) return;
-  if (key) { el.innerHTML = '🟢 AI key saved — bill scan ready'; el.style.color = 'var(--green)'; }
-  else { el.innerHTML = '🔴 No API key — tap 🔑 to set up'; el.style.color = 'var(--red)'; }
+  if (key) { el.innerHTML = '🟢 Gemini key saved — bill scan ready (free)'; el.style.color = 'var(--green)'; }
+  else { el.innerHTML = '🔴 No Gemini key — tap 🔑 to set up (free)'; el.style.color = 'var(--red)'; }
 }
 function startBillScan() {
   if (!getApiKey()) { openSheet('sheet-api-key'); showToast('Set your API key first'); return; }
@@ -2348,21 +2348,23 @@ function startBillScan() {
 async function saveApiKey() {
   const key = document.getElementById('inp-api-key').value.trim();
   const statusEl = document.getElementById('api-key-status');
-  if (!key || !key.startsWith('sk-ant-')) {
+  if (!key || key.length < 20) {
     statusEl.style.cssText = 'display:block;background:var(--red-light);color:var(--red);border-radius:10px;padding:10px 12px;font-size:12px;font-weight:600;';
-    statusEl.textContent = '❌ Key must start with sk-ant-'; return;
+    statusEl.textContent = '❌ Paste your Gemini API key (starts with AIza...)'; return;
   }
   statusEl.style.cssText = 'display:block;background:var(--sky-light);color:var(--sky-dark);border-radius:10px;padding:10px 12px;font-size:12px;font-weight:600;';
   statusEl.textContent = '⏳ Testing key…';
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key='+key, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 5, messages: [{ role: 'user', content: 'Hi' }] })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ parts: [{ text: 'Hi' }] }] })
     });
-    if (res.status === 401) {
+    if (res.status === 400 || res.status === 403) {
+      const errBody = await res.json().catch(()=>({}));
+      const msg = errBody?.error?.message || 'Invalid key';
       statusEl.style.cssText = 'display:block;background:var(--red-light);color:var(--red);border-radius:10px;padding:10px 12px;font-size:12px;font-weight:600;';
-      statusEl.textContent = '❌ Invalid key — check and try again'; return;
+      statusEl.textContent = '❌ ' + msg; return;
     }
     localStorage.setItem(API_KEY_STORAGE, key);
     statusEl.style.cssText = 'display:block;background:var(--green-light);color:var(--green);border-radius:10px;padding:10px 12px;font-size:12px;font-weight:600;';
@@ -2430,7 +2432,7 @@ async function scanBill(event) {
       console.error('Bill scan:', err);
       document.getElementById('bill-scanning-state').style.display = 'none';
       resultBox.style.background = 'var(--red-light)'; resultBox.style.borderColor = 'var(--red)'; resultBox.style.color = 'var(--red)';
-      if ((err.message||'').includes('401')) {
+      if ((err.message||'').includes('403') || (err.message||'').includes('400')) {
         resultBox.innerHTML = '❌ Invalid API key. <span style="color:var(--sky);cursor:pointer;font-weight:700;" onclick="openSheet(&#39;sheet-api-key&#39;)">Update →</span>';
       } else {
         resultBox.textContent = '⚠️ ' + (err.message||'Scan failed').slice(0,80) + '. Enter manually.';
