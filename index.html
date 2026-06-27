@@ -1796,8 +1796,8 @@ function exportPackingExcel() {
   URL.revokeObjectURL(url);
   showToast('Excel file downloaded 📊');
 }
-const CAT_ICONS = { Food: '🍽', Transport: '🚗', Hotel: '🏨', Activity: '🎭', Shopping: '🛍', Other: '📌' };
-const CAT_COLORS = { Food: 'cat-food', Transport: 'cat-transport', Hotel: 'cat-hotel', Activity: 'cat-activity', Shopping: 'cat-shopping', Other: 'cat-other' };
+const CAT_ICONS = { Food: '🍽', Flight: '✈️', 'Taxi / Transport': '🚕', Hotel: '🏨', Activity: '🎭', Shopping: '🛍', Other: '📌' };
+const CAT_COLORS = { Food: 'cat-food', Flight: 'cat-transport', 'Taxi / Transport': 'cat-transport', Hotel: 'cat-hotel', Activity: 'cat-activity', Shopping: 'cat-shopping', Other: 'cat-other' };
 function renderBudget() {
   const trip = getActiveTrip('bg');
   const selEl = document.getElementById('sel-trip-bg');
@@ -2163,13 +2163,14 @@ const CURRENCY_SYMBOLS = { USD:'$', EUR:'€', INR:'₹', GBP:'£', JPY:'¥', AE
 function fmtCurrency(amount, cur) {
   const sym = CURRENCY_SYMBOLS[cur] || cur + ' ';
   if (!amount && amount !== 0) return '—';
-  // Format with commas
-  const parts = parseFloat(amount).toFixed(2).split('.');
+  const n = parseFloat(amount);
+  const s = n % 1 === 0 ? n.toFixed(0) : n.toFixed(2).replace(/\.?0+$/, '');
+  const parts = s.split('.');
   parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   return sym + parts.join('.');
 }
 // ---- CUSTOM EXPENSE CATEGORIES ----
-const DEFAULT_EXP_CATS = ['Food','Transport','Hotel','Activity','Shopping','Other'];
+const DEFAULT_EXP_CATS = ['Food','Flight','Taxi / Transport','Hotel','Activity','Shopping','Other'];
 function getAllExpCats() { return [...DEFAULT_EXP_CATS, ...(state.customExpCats || [])]; }
 const ALL_CURRENCIES = ['USD','EUR','INR','GBP','JPY','AED','SGD','THB','RUB','AUD'];
 const CUR_OPTIONS = ALL_CURRENCIES.map(c => `<option value="${c}">${c}</option>`).join('');
@@ -2355,16 +2356,14 @@ async function saveApiKey() {
   statusEl.style.cssText = 'display:block;background:var(--sky-light);color:var(--sky-dark);border-radius:10px;padding:10px 12px;font-size:12px;font-weight:600;';
   statusEl.textContent = '⏳ Testing key…';
   try {
-    const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key='+key, {
+    const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key='+key, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ text: 'Hi' }] }] })
+      body: JSON.stringify({ contents: [{ parts: [{ text: 'Reply with word OK only' }] }] })
     });
-    if (res.status === 400 || res.status === 403) {
-      const errBody = await res.json().catch(()=>({}));
-      const msg = errBody?.error?.message || 'Invalid key';
+    if (res.status === 403) {
       statusEl.style.cssText = 'display:block;background:var(--red-light);color:var(--red);border-radius:10px;padding:10px 12px;font-size:12px;font-weight:600;';
-      statusEl.textContent = '❌ ' + msg; return;
+      statusEl.textContent = '❌ API key rejected — check and retry'; return;
     }
     localStorage.setItem(API_KEY_STORAGE, key);
     statusEl.style.cssText = 'display:block;background:var(--green-light);color:var(--green);border-radius:10px;padding:10px 12px;font-size:12px;font-weight:600;';
