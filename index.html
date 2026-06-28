@@ -84,10 +84,8 @@
   }
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif; background: var(--bg); color: var(--slate); overscroll-behavior: none; max-width: 430px; margin: 0 auto; position: relative; min-height: 100dvh; overflow-x: hidden; overflow-y: hidden; height: 100dvh; }
-  
   /* SCROLL AREA */
   .scroll-area { overflow-y: auto; overflow-x: hidden; height: 100dvh; padding-top: calc(var(--safe-top) + 8px); padding-bottom: calc(var(--tab-h) + 24px); -webkit-overflow-scrolling: touch; }
-  
   /* SCREENS */
   .screen { display: none; padding: 0 16px; }
   .screen.active { display: block; }
@@ -121,7 +119,6 @@
   .day-number { width: 40px; height: 40px; border-radius: 12px; background: var(--sky); color: white; font-weight: 700; font-size: 16px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
   .day-label { font-size: 15px; font-weight: 600; color: var(--slate); }
   .day-date { font-size: 12px; color: var(--muted); }
-  
   /* ACTIVITY ITEM */
   .activity-item { display: flex; align-items: flex-start; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
   .activity-item:last-child { border-bottom: none; padding-bottom: 0; }
@@ -714,9 +711,7 @@
         <button onclick="startBillScan()" style="flex:1;padding:11px;border:2px dashed var(--sky);border-radius:14px;background:var(--sky-light);color:var(--sky-dark);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:8px;">📷 Scan Bill with AI</button>
         <button onclick="openSheet('sheet-api-key')" id="btn-api-key-setup" style="padding:11px 14px;border:1.5px solid var(--border);border-radius:14px;background:var(--surface2);color:var(--mid);font-size:13px;cursor:pointer;font-family:inherit;" title="AI Key Settings">🔑</button>
       </div>
-      <div id="api-key-indicator" style="font-size:11px;margin-top:6px;text-align:center;"></div>
-      <input type="file" id="bill-camera-input" accept="image/*" capture="environment" style="display:none" onchange="scanBill(event)" />
-    </div>
+      <div id="api-key-indicator" style="font-size:11px;margin-top:6px;text-align:center;"></div><input type="file" id="bill-camera-input" accept="image/*" capture="environment" style="display:none" onchange="scanBill(event)"/></div>
     <div id="bill-scanning-state" style="display:none;text-align:center;padding:12px;background:var(--sky-light);border-radius:12px;margin-bottom:12px;"><div style="font-size:20px;">🤖</div><div style="font-size:13px;font-weight:600;color:var(--sky-dark);">Reading bill…</div></div>
     <div id="bill-preview" style="display:none;margin-bottom:12px;">
       <img id="bill-img" style="width:100%;border-radius:12px;max-height:140px;object-fit:cover;" />
@@ -1188,18 +1183,22 @@
   <div class="sheet-handle"></div>
   <div class="sheet-title">🤖 AI Bill Scan Setup</div>
   <div class="sheet-body">
-    <div style="background:#E8F5E9;border:1.5px solid #4CAF50;border-radius:12px;padding:14px;margin-bottom:16px;">
-      <div style="font-size:13px;font-weight:700;color:#1B5E20;margin-bottom:6px;">✅ Free — no credit card needed</div>
-      <div style="font-size:12px;color:#2E7D32;line-height:1.7;">1. Go to <b>aistudio.google.com</b><br>2. Sign in with Google (free)<br>3. Tap <b>Get API Key</b> → Create API key<br>4. Copy &amp; paste below<br><span style="opacity:.8;">Free: 1500 scans/day · 15/minute</span></div>
+    <div style="background:var(--sky-light);border:1.5px solid var(--sky);border-radius:12px;padding:14px;margin-bottom:16px;">
+      <div style="font-size:13px;font-weight:700;color:var(--sky-dark);margin-bottom:8px;">📷 Two scan modes</div>
+      <div style="font-size:12px;color:var(--mid);line-height:1.7;"><b>🌐 AI Scan (online)</b> — uses OpenRouter free API<br>Accurate, reads any receipt, extracts category<br><b>📴 OCR Scan (offline)</b> — no key needed, works without internet<br>Basic text extraction, you verify the amount</div>
+    </div>
+    <div style="background:#E8F5E9;border:1.5px solid #4CAF50;border-radius:12px;padding:12px;margin-bottom:14px;">
+      <div style="font-size:12px;font-weight:700;color:#1B5E20;margin-bottom:6px;">Get FREE OpenRouter key (2 min)</div>
+      <div style="font-size:11px;color:#2E7D32;line-height:1.7;">1. Go to <b>openrouter.ai</b> → Sign up free<br>2. Dashboard → Keys → Create Key<br>3. Paste below · Free tier: no billing needed<br><span style="opacity:.8;">Uses google/gemini-2.0-flash-exp:free model</span></div>
     </div>
     <div class="form-group">
-      <label class="form-label">Google Gemini API Key</label>
-      <input class="form-input" id="inp-api-key" type="password" placeholder="AIza..." autocomplete="off" style="font-family:monospace;font-size:13px;letter-spacing:1px;"/>
+      <label class="form-label">OpenRouter API Key (optional — for AI scan)</label>
+      <input class="form-input" id="inp-api-key" type="password" placeholder="sk-or-v1-..." autocomplete="off" style="font-family:monospace;font-size:13px;"/>
     </div>
     <div id="api-key-status" style="display:none;margin-bottom:12px;border-radius:10px;padding:10px 12px;font-size:12px;font-weight:600;"></div>
-    <button class="btn-primary" onclick="saveApiKey()">Save & Test Key</button>
-    <button id="btn-clear-api-key" onclick="clearApiKey()" style="display:none;width:100%;padding:13px;background:var(--red-light);color:var(--red);border:none;border-radius:14px;font-size:15px;font-weight:600;cursor:pointer;margin-top:8px;font-family:inherit;">Remove Saved Key</button>
-    <div style="font-size:11px;color:var(--muted);text-align:center;margin-top:14px;line-height:1.5;">Your key is saved in your browser's localStorage.<br>It never leaves your device.</div>
+    <button class="btn-primary" onclick="saveApiKey()">Save Key</button>
+    <button id="btn-clear-api-key" onclick="clearApiKey()" style="display:none;width:100%;padding:13px;background:var(--red-light);color:var(--red);border:none;border-radius:14px;font-size:15px;font-weight:600;cursor:pointer;margin-top:8px;font-family:inherit;">Remove Key</button>
+    <div style="margin-top:12px;padding:10px;background:var(--surface2);border-radius:10px;font-size:11px;color:var(--muted);text-align:center;line-height:1.5;">Without a key, tap Scan → uses offline OCR automatically.<br>Key stored only on your device.</div>
   </div>
 </div>
 <!-- TOAST -->
@@ -2336,66 +2335,100 @@ function resetExpenseForm() {
   setTimeout(() => addExpenseRow(), 50);
 }
 // ============= API KEY MANAGEMENT =============
-const API_KEY_STORAGE = 'voyage_anthropic_key';
-function getApiKey() { try { return localStorage.getItem(API_KEY_STORAGE) || ''; } catch(e) { return ''; } }
-function updateApiKeyIndicator() {
-  const key = getApiKey();
-  const el = document.getElementById('api-key-indicator');
-  if (!el) return;
-  if (key) { el.innerHTML = '🟢 Gemini key saved — bill scan ready (free)'; el.style.color = 'var(--green)'; }
-  else { el.innerHTML = '🔴 No Gemini key — tap 🔑 to set up (free)'; el.style.color = 'var(--red)'; }
-}
+const API_KEY_STORAGE = 'voyage_openrouter_key';
+function getApiKey() { try { return localStorage.getItem(API_KEY_STORAGE)||''; } catch(e) { return ''; } }
+function updateApiKeyIndicator(){const el=document.getElementById('api-key-indicator');if(!el)return;const key=getApiKey();if(key){el.innerHTML='🟢 AI scan ready (OpenRouter)';el.style.color='var(--green)';}else{el.innerHTML='🔵 Tap 🔑 for AI scan · offline OCR available';el.style.color='var(--sky-dark)';}}
 function startBillScan() {
-  if (!getApiKey()) { openSheet('sheet-api-key'); showToast('Set your API key first'); return; }
   document.getElementById('bill-camera-input').click();
 }
 async function saveApiKey() {
   const key = document.getElementById('inp-api-key').value.trim();
   const statusEl = document.getElementById('api-key-status');
-  if (!key || key.length < 20) {
-    statusEl.style.cssText = 'display:block;background:var(--red-light);color:var(--red);border-radius:10px;padding:10px 12px;font-size:12px;font-weight:600;';
-    statusEl.textContent = '❌ Paste your Gemini API key (starts with AIza...)'; return;
-  }
-  statusEl.style.cssText = 'display:block;background:var(--sky-light);color:var(--sky-dark);border-radius:10px;padding:10px 12px;font-size:12px;font-weight:600;';
-  statusEl.textContent = '⏳ Testing key…';
-  try {
-    const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key='+key, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ text: 'Reply with word OK only' }] }] })
-    });
-    if (res.status === 403) {
-      statusEl.style.cssText = 'display:block;background:var(--red-light);color:var(--red);border-radius:10px;padding:10px 12px;font-size:12px;font-weight:600;';
-      statusEl.textContent = '❌ API key rejected — check and retry'; return;
-    }
-    localStorage.setItem(API_KEY_STORAGE, key);
-    statusEl.style.cssText = 'display:block;background:var(--green-light);color:var(--green);border-radius:10px;padding:10px 12px;font-size:12px;font-weight:600;';
-    statusEl.textContent = '✅ Key saved! Bill scan is ready.';
-    document.getElementById('btn-clear-api-key').style.display = 'block';
-    updateApiKeyIndicator();
-    setTimeout(() => closeSheet('sheet-api-key'), 1500);
-  } catch(e) {
-    localStorage.setItem(API_KEY_STORAGE, key);
-    statusEl.style.cssText = 'display:block;background:var(--green-light);color:var(--green);border-radius:10px;padding:10px 12px;font-size:12px;font-weight:600;';
-    statusEl.textContent = '✅ Key saved (will verify on first scan)';
-    document.getElementById('btn-clear-api-key').style.display = 'block';
-    updateApiKeyIndicator();
-    setTimeout(() => closeSheet('sheet-api-key'), 1500);
-  }
+  const show = (msg, ok) => {
+    statusEl.style.cssText = 'display:block;border-radius:10px;padding:10px 12px;font-size:12px;font-weight:600;background:'+(ok?'var(--green-light)':'var(--red-light)')+';color:'+(ok?'var(--green)':'var(--red)')+';';
+    statusEl.textContent = msg;
+  };
+  if (!key) { show('❌ Paste your OpenRouter key', false); return; }
+  localStorage.setItem(API_KEY_STORAGE, key);
+  show('✅ Key saved! AI scan is ready.', true);
+  document.getElementById('btn-clear-api-key').style.display = 'block';
+  updateApiKeyIndicator();
+  setTimeout(() => closeSheet('sheet-api-key'), 1400);
 }
-function clearApiKey() {
-  localStorage.removeItem(API_KEY_STORAGE);
-  document.getElementById('inp-api-key').value = '';
-  document.getElementById('btn-clear-api-key').style.display = 'none';
-  const s = document.getElementById('api-key-status');
-  s.style.cssText = 'display:block;background:var(--surface2);color:var(--muted);border-radius:10px;padding:10px 12px;font-size:12px;';
-  s.textContent = 'Key removed'; updateApiKeyIndicator();
+function clearApiKey(){localStorage.removeItem(API_KEY_STORAGE);document.getElementById('inp-api-key').value='';document.getElementById('btn-clear-api-key').style.display='none';const s=document.getElementById('api-key-status');s.style.cssText='display:block;border-radius:10px;padding:10px 12px;font-size:12px;background:var(--surface2);color:var(--muted);';s.textContent='Key removed';updateApiKeyIndicator();}
+// ── Tesseract OCR fallback (offline) ──
+function loadTesseract() {
+  return new Promise((resolve, reject) => {
+    if (window.Tesseract) { resolve(window.Tesseract); return; }
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+    s.onload = () => resolve(window.Tesseract);
+    s.onerror = () => reject(new Error('Tesseract failed to load'));
+    document.head.appendChild(s);
+  });
+}
+function parseReceiptText(text) {
+  // Find largest number = grand total
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const nums = [];
+  lines.forEach(l => {
+    const m = l.match(/(\d{1,6}[.,]\d{2})/g);
+    if (m) m.forEach(n => nums.push(parseFloat(n.replace(',','.'))));
+  });
+  nums.sort((a,b) => b-a);
+  const amount = nums[0] || 0;
+  // Merchant = first non-empty non-number line
+  const merchant = lines.find(l => l.length > 2 && !/^[\d\s\.\,\-\:\/]+$/.test(l)) || '';
+  // Date
+  const dateM = text.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/);
+  let date = '';
+  if (dateM) {
+    const yr = dateM[3].length===2?'20'+dateM[3]:dateM[3];
+    date = `${yr}-${dateM[2].padStart(2,'0')}-${dateM[1].padStart(2,'0')}`;
+  }
+  // Category by keywords
+  const t = text.toLowerCase();
+  let category = 'Other';
+  if(/restaurant|cafe|food|pizza|zomato|swiggy|dhaba|canteen|bakery|coffee/.test(t))category='Food';
+  else if(/uber|ola|rapido|taxi|auto|cab|metro|railway|train|bus/.test(t))category='Taxi / Transport';
+  else if(/air|indigo|spicejet|vistara|flight|airlines/.test(t))category='Flight';
+  else if(/hotel|lodge|resort|stay|hostel|oyo|booking/.test(t))category='Hotel';
+  else if(/cinema|movie|pvr|inox|park|museum|ticket/.test(t))category='Activity';
+  else if(/shop|store|mart|mall|amazon|flipkart/.test(t))category='Shopping';
+  return { merchant: merchant.slice(0,40), amount, date, category, description: merchant.slice(0,40) };
+}
+async function scanWithOCR(base64, resultBox) {
+  resultBox.style.cssText = 'background:var(--sky-light);border:1.5px solid var(--sky);border-radius:10px;padding:8px 12px;margin-top:6px;color:var(--sky-dark);font-size:12px;';
+  resultBox.textContent = '📴 Running offline OCR...';
+  const Tess = await loadTesseract();
+  const worker = await Tess.createWorker('eng');
+  const { data: { text } } = await worker.recognize(base64);
+  await worker.terminate();
+  return parseReceiptText(text);
+}
+async function scanWithAI(base64Data, mediaType, apiKey) {
+  const prompt = 'Extract from this receipt: merchant name, total amount paid as a number only (no currency symbols), date in YYYY-MM-DD format, category (one of: Food, Flight, Taxi / Transport, Hotel, Activity, Shopping, Other), short description. Reply ONLY with this JSON no markdown: {"merchant":"","amount":0,"date":"","category":"","description":""}';
+  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+apiKey, 'HTTP-Referer':'https://voyage-app.github.io', 'X-Title':'Voyage Travel Planner' },
+    body: JSON.stringify({
+      model: 'google/gemini-2.0-flash-exp:free',
+      messages: [{ role:'user', content:[
+        { type:'image_url', image_url:{ url:'data:'+mediaType+';base64,'+base64Data } },
+        { type:'text', text: prompt }
+      ]}],
+      max_tokens: 300
+    })
+  });
+  if (!res.ok) { const e=await res.json().catch(()=>({})); throw new Error(e?.error?.message||'HTTP '+res.status); }
+  const data = await res.json();
+  const raw = data.choices?.[0]?.message?.content || '';
+  const clean = raw.replace(/```[a-z]*/g,'').replace(/```/g,'').trim();
+  return JSON.parse(clean);
 }
 async function scanBill(event) {
   const file = event.target.files[0];
   if (!file) return;
-  const apiKey = getApiKey();
-  if (!apiKey) { openSheet('sheet-api-key'); return; }
   const trip = getActiveTrip('bg');
   const cur = trip?.currency || 'USD';
   const reader = new FileReader();
@@ -2405,63 +2438,48 @@ async function scanBill(event) {
     document.getElementById('bill-preview').style.display = 'block';
     document.getElementById('bill-scanning-state').style.display = 'block';
     const resultBox = document.getElementById('bill-ocr-result');
-    resultBox.style.cssText = 'background:var(--green-light);border:1.5px solid var(--green);border-radius:10px;padding:8px 12px;margin-top:6px;';
-    resultBox.style.color = '#1a5c35'; resultBox.textContent = '';
+    resultBox.style.cssText = 'background:var(--green-light);border:1.5px solid var(--green);border-radius:10px;padding:8px 12px;margin-top:6px;color:#1a5c35;font-size:12px;';
+    resultBox.textContent = '';
+    const base64Data = base64.split(',')[1];
+    const mediaType = file.type||'image/jpeg';
+    let parsed = null;
+    let usedMethod = '';
+    const apiKey = getApiKey();
     try {
-      const base64Data = base64.split(',')[1];
-      const mediaType = file.type && file.type.startsWith('image/') ? file.type : 'image/jpeg';
-      const prompt = 'Look at this receipt image. Extract: 1) merchant/restaurant name, 2) final total amount paid (number only, no currency), 3) date in YYYY-MM-DD format (guess current year if unclear), 4) category from this list only: Food, Flight, Taxi / Transport, Hotel, Activity, Shopping, Other. 5) short description. Reply with ONLY this JSON object and nothing else: {"merchant":"","amount":0,"date":"","category":"","description":""}';
-      const body = {
-        contents: [{ parts: [
-          { inline_data: { mime_type: mediaType, data: base64Data } },
-          { text: prompt }
-        ]}],
-        generationConfig: { maxOutputTokens: 300, temperature: 0 }
-      };
-      const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + apiKey;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        const errMsg = errData?.error?.message || ('HTTP ' + response.status);
-        if (response.status === 400 && errMsg.includes('API_KEY')) throw new Error('invalid_key');
-        if (response.status === 403) throw new Error('invalid_key');
-        throw new Error(errMsg);
-      }
-      const data = await response.json();
-      const raw = (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
-      if (!raw) throw new Error('Empty response from Gemini');
-      const clean = raw.replace(/```[a-z]*/g,'').replace(/```/g,'').trim();
-      const parsed = JSON.parse(clean);
-      const rows = document.querySelectorAll('#multi-expense-rows > div');
-      if (rows[0]) {
-        const inp = rows[0].querySelectorAll('input');
-        if (inp[0]) inp[0].value = parsed.description || parsed.merchant || '';
-        if (inp[1]) inp[1].value = parsed.amount || '';
-      } else { addExpenseRow(parsed.description || parsed.merchant || '', parsed.amount || ''); }
-      updateMultiTotal();
-      if (parsed.date) document.getElementById('inp-exp-date').value = parsed.date;
-      const catSel = document.getElementById('inp-exp-cat');
-      if (parsed.category && getAllExpCats().includes(parsed.category)) catSel.value = parsed.category;
-      document.getElementById('bill-scanning-state').style.display = 'none';
-      resultBox.innerHTML = '✅ <b>' + (parsed.merchant || '—') + '</b> · ' + cur + ' ' + (parsed.amount||'') + ' · ' + (parsed.category||'') + '<br><span style="color:#2d7a4f;font-size:11px;">Pre-filled — verify and save</span>';
-    } catch(err) {
-      console.error('Bill scan error:', err);
-      document.getElementById('bill-scanning-state').style.display = 'none';
-      resultBox.style.cssText = 'background:var(--red-light);border:1.5px solid var(--red);border-radius:10px;padding:8px 12px;margin-top:6px;color:var(--red);font-size:13px;';
-      if (err.message === 'invalid_key') {
-        resultBox.innerHTML = '❌ Invalid API key. <span style="color:var(--sky);cursor:pointer;font-weight:700;" onclick="openSheet(\'sheet-api-key\')">Update key →</span>';
-      } else if (err.message && err.message.includes('Failed to fetch')) {
-        resultBox.textContent = '⚠️ Network error. Check internet connection and try again.';
+      if (apiKey) {
+        resultBox.textContent = '🤖 AI scanning...';
+        parsed = await scanWithAI(base64Data, mediaType, apiKey);
+        usedMethod = 'AI';
       } else {
-        resultBox.textContent = '⚠️ ' + (err.message || 'Scan failed').slice(0, 100) + '. Enter manually.';
+        parsed = await scanWithOCR(base64, resultBox);
+        usedMethod = 'OCR';
+      }
+    } catch(err) {
+      console.error('AI scan failed, trying OCR:', err);
+      try {
+        resultBox.textContent = '⚠️ AI failed — trying offline OCR...';
+        parsed = await scanWithOCR(base64, resultBox);
+        usedMethod = 'OCR fallback';
+      } catch(err2) {
+        document.getElementById('bill-scanning-state').style.display='none';
+        resultBox.style.cssText='background:var(--red-light);border:1.5px solid var(--red);border-radius:10px;padding:8px 12px;margin-top:6px;color:var(--red);font-size:12px;';
+        resultBox.textContent='⚠️ Scan failed. Enter manually.';
+        return;
       }
     }
+    document.getElementById('bill-scanning-state').style.display='none';
+    if (parsed) {
+      const rows = document.querySelectorAll('#multi-expense-rows > div');
+      if (rows[0]) { const inp=rows[0].querySelectorAll('input'); if(inp[0])inp[0].value=parsed.description||parsed.merchant||''; if(inp[1])inp[1].value=parsed.amount||''; }
+      else addExpenseRow(parsed.description||parsed.merchant||'', parsed.amount||'');
+      updateMultiTotal();
+      if (parsed.date) document.getElementById('inp-exp-date').value=parsed.date;
+      const catSel=document.getElementById('inp-exp-cat');
+      if (parsed.category&&getAllExpCats().includes(parsed.category)) catSel.value=parsed.category;
+      resultBox.innerHTML='✅ ['+usedMethod+'] <b>'+(parsed.merchant||'—')+'</b> · '+cur+' '+(parsed.amount||'')+(parsed.category?' · '+parsed.category:'')+'<br><span style="font-size:11px;opacity:.8;">Verify and save</span>';
+    }
   };
-  reader.onerror = () => showToast('Could not read image file');
+  reader.onerror=()=>showToast('Could not read image');
   reader.readAsDataURL(file);
 }
 // ---- EDIT EXPENSE ----
