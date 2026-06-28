@@ -8,7 +8,6 @@
 <meta name="apple-mobile-web-app-title" content="Voyage">
 <meta name="application-name" content="Voyage">
 <meta name="theme-color" content="#4A90D9">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <title>Voyage · Travel Planner</title>
 <script>
 // Generate inline PNG icon via canvas and set as apple-touch-icon
@@ -2554,82 +2553,80 @@ function deleteFromEditExpense() {
   delExpense(tripId, expId);
 }
 function exportBudgetExcel() {
- const trip = getActiveTrip('bg');
- if (!trip) { showToast('Select a trip first'); return; }
- if (typeof XLSX === 'undefined') { showToast('Loading Excel library... try again in a moment'); return; }
- const expenses = state.expenses[trip.id] || [];
- const moneyIn = (state.moneyIn?.[trip.id]||[]).reduce((s,x)=>s+x.amount,0);
- const baseCur = trip.currency || 'USD';
- const total = expenses.reduce((s,e)=>s+(e.amountBase||e.amount),0);
- const budget = (trip.budget||0) + moneyIn;
- const remaining = budget - total;
- const wb = XLSX.utils.book_new();
- function hdrCell(v) { return { v, t:'s', s:{ font:{bold:true,color:{rgb:'FFFFFF'},name:'Arial',sz:10}, fill:{fgColor:{rgb:'1E3A5F'}}, border:{top:{style:'thin',color:{rgb:'AAAAAA'}},bottom:{style:'thin',color:{rgb:'AAAAAA'}},left:{style:'thin',color:{rgb:'AAAAAA'}},right:{style:'thin',color:{rgb:'AAAAAA'}}}, alignment:{horizontal:'center',vertical:'center'} } };
- }
- function txtCell(v, fill, bold, align) { return { v:v||'', t:'s', s:{ font:{bold:!!bold,name:'Arial',sz:10}, fill:fill?{fgColor:{rgb:fill}}:undefined, border:{top:{style:'thin',color:{rgb:'DDDDDD'}},bottom:{style:'thin',color:{rgb:'DDDDDD'}},left:{style:'thin',color:{rgb:'DDDDDD'}},right:{style:'thin',color:{rgb:'DDDDDD'}}}, alignment:{horizontal:align||'left',vertical:'center'} } };
- }
- function numCell(v, fill, bold) { return { v:parseFloat(v)||0, t:'n', s:{ font:{bold:!!bold,name:'Arial',sz:10}, fill:fill?{fgColor:{rgb:fill}}:undefined, border:{top:{style:'thin',color:{rgb:'DDDDDD'}},bottom:{style:'thin',color:{rgb:'DDDDDD'}},left:{style:'thin',color:{rgb:'DDDDDD'}},right:{style:'thin',color:{rgb:'DDDDDD'}}}, numFmt:'#,##0.00', alignment:{horizontal:'right',vertical:'center'} } };
- }
- function pctCell(v, fill) { return { v:parseFloat(v)||0, t:'n', s:{ font:{name:'Arial',sz:10}, fill:fill?{fgColor:{rgb:fill}}:undefined, border:{top:{style:'thin',color:{rgb:'DDDDDD'}},bottom:{style:'thin',color:{rgb:'DDDDDD'}},left:{style:'thin',color:{rgb:'DDDDDD'}},right:{style:'thin',color:{rgb:'DDDDDD'}}}, numFmt:'0.0%', alignment:{horizontal:'right',vertical:'center'} } };
- }
- var aoa_d = []; aoa_d.push(['VOYAGE BUDGET REPORT — ' + trip.dest]); aoa_d.push([(trip.start&&trip.end ? fmt(trip.start)+' → '+fmt(trip.end) : 'Dates not set') + ' | Currency: '+baseCur]); aoa_d.push(['Exported: '+new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'})]); aoa_d.push([]); aoa_d.push(['SUMMARY','','','','','']); aoa_d.push(['Total Budget', budget, '', 'Total Spent', total, '']); aoa_d.push(['Money Received', moneyIn, '', 'Remaining', remaining, '']); aoa_d.push(['# Expenses', expenses.length, '', '% Used', budget?total/budget:0, '']); aoa_d.push([]); aoa_d.push(['CATEGORY BREAKDOWN','','','','','','']); aoa_d.push(['Category','Amount ('+baseCur+')','% of Total','# Items','Avg per Item','','']);
- var catTotals={}, catCounts={};
- expenses.forEach(function(e){ var a=e.amountBase||e.amount; catTotals[e.cat]=(catTotals[e.cat]||0)+a; catCounts[e.cat]=(catCounts[e.cat]||0)+1; });
- var catRows=Object.keys(catTotals).sort(function(a,b){return catTotals[b]-catTotals[a];});
- catRows.forEach(function(cat){ aoa_d.push([(CAT_ICONS[cat]||'')+' '+cat, catTotals[cat], total?catTotals[cat]/total:0, catCounts[cat], catCounts[cat]?catTotals[cat]/catCounts[cat]:0,'','']); }); aoa_d.push(['TOTAL', total, 1, expenses.length, '','','']); aoa_d.push([]); aoa_d.push(['PAYMENT METHOD BREAKDOWN','','','']); aoa_d.push(['Payment Method','Amount ('+baseCur+')','% of Total','']);
- var pmTotals={};
- expenses.forEach(function(e){ var pm=e.payMethod==='💳 Credit Card'&&e.cardName?'💳 '+e.cardName:(e.payMethod||'💵 Cash'); pmTotals[pm]=(pmTotals[pm]||0)+(e.amountBase||e.amount); });
- Object.keys(pmTotals).sort(function(a,b){return pmTotals[b]-pmTotals[a];}).forEach(function(pm){ aoa_d.push([pm, pmTotals[pm], total?pmTotals[pm]/total:0, '']); });
- if (moneyIn > 0) { aoa_d.push([]); aoa_d.push(['MONEY RECEIVED','','','']); aoa_d.push(['Description','Amount','Date','']); (state.moneyIn[trip.id]||[]).forEach(function(x){ aoa_d.push([x.desc, x.amount, x.date?fmt(x.date):'', '']); }); aoa_d.push(['TOTAL RECEIVED', moneyIn, '', '']);
- }
- var ws_d = XLSX.utils.aoa_to_sheet(aoa_d);
- ws_d['A1'].s = { font:{bold:true,name:'Arial',sz:15,color:{rgb:'1E3A5F'}}, alignment:{horizontal:'left'} };
- ws_d['A2'].s = { font:{name:'Arial',sz:11,color:{rgb:'555555'}}, alignment:{horizontal:'left'} };
- ws_d['A3'].s = { font:{name:'Arial',sz:9,color:{rgb:'999999'}}, alignment:{horizontal:'left'} };
- ['A6','D6','A7','D7','A8','D8'].forEach(function(ref){ if(ws_d[ref]) ws_d[ref].s = {font:{bold:true,name:'Arial',sz:10,color:{rgb:'333333'}}}; });
- // Amount cells in summary
- ['B6','E6','B7','E7','B8','E8'].forEach(function(ref){ if(ws_d[ref]){ ws_d[ref].t='n'; ws_d[ref].s={font:{bold:true,name:'Arial',sz:12,color:{rgb:ref==='E7'?(remaining>=0?'2E7D32':'C62828'):'1565C0'}},numFmt:'#,##0.00'}; }});
- if(ws_d['E8']){ws_d['E8'].s={font:{bold:true,name:'Arial',sz:12,color:{rgb:budget&&total/budget>0.9?'C62828':'2E7D32'}},numFmt:'0.0%'};}
- // Category header
- var catHdrRow = 11;
- ['A','B','C','D','E'].forEach(function(col,ci){ var ref=col+(catHdrRow+1); if(ws_d[ref]){ ws_d[ref].s={font:{bold:true,color:{rgb:'FFFFFF'},name:'Arial',sz:10},fill:{fgColor:{rgb:'1E3A5F'}},alignment:{horizontal:ci===0?'left':'right'}}; }});
- // Total row in cats
- var totalRowRef = catHdrRow+1+catRows.length+1;
- ['A','B','C','D','E'].forEach(function(col,ci){ var ref=col+totalRowRef; if(ws_d[ref]){ ws_d[ref].s={font:{bold:true,name:'Arial',sz:10},fill:{fgColor:{rgb:'E3F2FD'}},alignment:{horizontal:ci===0?'left':'right'},numFmt:ci===2?'0.0%':ci>=1?'#,##0.00':undefined}; }});
- aoa_e.push(['','TOTAL','','','', total,'','','']);
- var ws_e = XLSX.utils.aoa_to_sheet(aoa_e);
- // Total row
- var totRef=XLSX.utils.encode_cell({r:sorted.length+1,c:5});
- if(ws_e[totRef]){ws_e[totRef].s={font:{bold:true,name:'Arial',sz:10},fill:{fgColor:{rgb:'E3F2FD'}},numFmt:'#,##0.00',alignment:{horizontal:'right'}};}
- var totLbl=XLSX.utils.encode_cell({r:sorted.length+1,c:1});
- if(ws_e[totLbl]){ws_e[totLbl].s={font:{bold:true,name:'Arial',sz:10},fill:{fgColor:{rgb:'E3F2FD'}}};}
- ws_e['!cols']=[{wch:12},{wch:30},{wch:18},{wch:18},{wch:16},{wch:14},{wch:12},{wch:10},{wch:24}];
- ws_e['!autofilter']={ref:XLSX.utils.encode_range({s:{r:0,c:0},e:{r:0,c:8}})};
- XLSX.utils.book_append_sheet(wb, ws_e, 'Expenses');
- var csHdrs=['Category','Amount ('+baseCur+')','% Share','# Items','Avg/Item','Biggest Expense','Biggest Amount'];
- var aoa_cs=[csHdrs];
- catRows.forEach(function(cat){ var amt=catTotals[cat],cnt=catCounts[cat]; var catExp=expenses.filter(function(e){return e.cat===cat;}).sort(function(a,b){return (b.amountBase||b.amount)-(a.amountBase||a.amount);}); var big=catExp[0]; aoa_cs.push([(CAT_ICONS[cat]||'')+' '+cat, amt, total?amt/total:0, cnt, cnt?amt/cnt:0, big?big.name:'', big?big.amountBase||big.amount:'']);
- });
- aoa_cs.push(['GRAND TOTAL', total, 1, expenses.length,'','','']);
- var ws_cs=XLSX.utils.aoa_to_sheet(aoa_cs);
- csHdrs.forEach(function(h,ci){var ref=XLSX.utils.encode_cell({r:0,c:ci});ws_cs[ref].s={font:{bold:true,color:{rgb:'FFFFFF'},name:'Arial',sz:10},fill:{fgColor:{rgb:'1E3A5F'}},alignment:{horizontal:ci>=1?'right':'left'}};});
- catRows.forEach(function(cat,ri){ var fill=ri%2===0?'FFFFFF':'F5F5F5'; for(var ci=0;ci<7;ci++){var ref=XLSX.utils.encode_cell({r:ri+1,c:ci});if(ws_cs[ref]){ws_cs[ref].s={font:{name:'Arial',sz:10},fill:{fgColor:{rgb:fill}},alignment:{horizontal:ci>=1&&ci!==5?'right':'left'},numFmt:ci===2?'0.0%':ci===1||ci===4||ci===6?'#,##0.00':undefined};}}
- });
- var gtRow=catRows.length+1;
- for(var ci=0;ci<7;ci++){var ref=XLSX.utils.encode_cell({r:gtRow,c:ci});if(ws_cs[ref]){ws_cs[ref].s={font:{bold:true,name:'Arial',sz:10},fill:{fgColor:{rgb:'E3F2FD'}},alignment:{horizontal:ci>=1?'right':'left'},numFmt:ci===2?'0.0%':ci===1||ci===4||ci===6?'#,##0.00':undefined};}}
- ws_cs['!cols']=[{wch:22},{wch:16},{wch:12},{wch:10},{wch:14},{wch:30},{wch:16}];
- XLSX.utils.book_append_sheet(wb, ws_cs, 'Category Summary');
- // Write and download
- var wbOut=XLSX.write(wb,{bookType:'xlsx',type:'array',cellStyles:true});
- var blob=new Blob([wbOut],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
- var url=URL.createObjectURL(blob);
- var now=new Date();
- var ds=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
- var a=document.createElement('a');
- a.href=url; a.download='Budget-'+trip.dest.replace(/[^a-z0-9]/gi,'-')+'-'+ds+'.xlsx';
- document.body.appendChild(a); a.click(); document.body.removeChild(a);
- URL.revokeObjectURL(url);
- showToast('Budget exported as Excel (.xlsx) 📊');
+  const trip = getActiveTrip('bg');
+  if (!trip) { showToast('Select a trip first'); return; }
+  const expenses = state.expenses[trip.id] || [];
+  if (!expenses.length) { showToast('No expenses to export'); return; }
+  const baseCur = trip.currency || 'USD';
+  const moneyIn = (state.moneyIn?.[trip.id]||[]).reduce((s,x)=>s+x.amount,0);
+  const total = expenses.reduce((s,e)=>s+(e.amountBase||e.amount),0);
+  const budget = (trip.budget||0)+moneyIn;
+  const remaining = budget - total;
+  const catTotals={},catCounts={},pmTotals={};
+  expenses.forEach(e=>{
+    const a=e.amountBase||e.amount;
+    catTotals[e.cat]=(catTotals[e.cat]||0)+a;
+    catCounts[e.cat]=(catCounts[e.cat]||0)+1;
+    const pm=e.payMethod==='💳 Credit Card'&&e.cardName?'CC: '+e.cardName:(e.payMethod||'Cash');
+    pmTotals[pm]=(pmTotals[pm]||0)+a;
+  });
+  const sorted=[...expenses].sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  const catKeys=Object.keys(catTotals).sort((a,b)=>catTotals[b]-catTotals[a]);
+  const pmKeys=Object.keys(pmTotals).sort((a,b)=>pmTotals[b]-pmTotals[a]);
+  const n=v=>parseFloat(v||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const pct=v=>total?(v/total*100).toFixed(1)+'%':'0%';
+  const H='#1E3A5F';
+  let html=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>Dashboard</x:Name></x:ExcelWorksheet><x:ExcelWorksheet><x:Name>Expenses</x:Name></x:ExcelWorksheet><x:ExcelWorksheet><x:Name>Summary</x:Name></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--><style>body{font-family:Arial,sans-serif;font-size:10pt;}td{border:1px solid #ccc;padding:5px 8px;vertical-align:middle;}.h{background:${H};color:#fff;font-weight:bold;text-align:center;}.t{font-weight:bold;background:#E3F2FD;}.r{text-align:right;}.r0{background:#fff;}.r1{background:#F0F4FF;}.ttl{font-size:14pt;font-weight:bold;color:${H};border:none;}.sub{font-size:10pt;color:#555;border:none;}.kp{background:#E3F2FD;border:2px solid ${H};text-align:center;padding:10px;}.kpn{font-size:13pt;font-weight:bold;color:${H};}.kpl{font-size:8pt;color:#555;}</style></head><body>`;
+  html = html.replace(/\$\{H\}/g, H);
+  html+=`<table style="page-break-after:always;width:100%;border-collapse:collapse;">
+<tr><td colspan="8" class="ttl">✈ VOYAGE — ${trip.dest} Budget Report</td></tr>
+<tr><td colspan="8" class="sub">${trip.start?fmt(trip.start):''} ${trip.end?'→ '+fmt(trip.end):''} | ${baseCur} | ${new Date().toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</td></tr>
+<tr><td colspan="8" style="border:none;padding:4px;"></td></tr>
+<tr><td colspan="2" class="kp"><div class="kpl">BUDGET</div><div class="kpn">${n(budget)}</div></td>
+<td colspan="2" class="kp"><div class="kpl">SPENT</div><div class="kpn" style="color:${total>budget?'#C62828':'#1565C0'}">${n(total)}</div></td>
+<td colspan="2" class="kp"><div class="kpl">REMAINING</div><div class="kpn" style="color:${remaining>=0?'#2E7D32':'#C62828'}">${n(remaining)}</div></td>
+<td colspan="2" class="kp"><div class="kpl">EXPENSES</div><div class="kpn">${expenses.length}</div></td></tr>
+<tr><td colspan="8" style="border:none;padding:4px;"></td></tr>
+<tr><td colspan="8" style="background:${H};color:#fff;font-weight:bold;padding:7px;font-size:11pt;">CATEGORY BREAKDOWN</td></tr>
+<tr><td class="h">Category</td><td class="h r">Amount (${baseCur})</td><td class="h r">% Share</td><td class="h r">Items</td><td class="h r">Avg/Item</td><td class="h">Biggest Expense</td><td class="h r">Biggest Amt</td><td class="h"></td></tr>`;
+  catKeys.forEach((cat,i)=>{
+    const a=catTotals[cat],cnt=catCounts[cat],cl=i%2?'r1':'r0';
+    const big=[...expenses].filter(e=>e.cat===cat).sort((a2,b)=>(b.amountBase||b.amount)-(a2.amountBase||a2.amount))[0];
+    html+=`<tr><td class="${cl}">${(CAT_ICONS[cat]||'')} ${cat}</td><td class="${cl} r">${n(a)}</td><td class="${cl} r">${pct(a)}</td><td class="${cl} r">${cnt}</td><td class="${cl} r">${n(cnt?a/cnt:0)}</td><td class="${cl}">${big?big.name:''}</td><td class="${cl} r">${big?n(big.amountBase||big.amount):''}</td><td class="${cl}"></td></tr>`;
+  });
+  html+=`<tr><td class="t">TOTAL</td><td class="t r">${n(total)}</td><td class="t r">100%</td><td class="t r">${expenses.length}</td><td class="t r">${n(expenses.length?total/expenses.length:0)}</td><td class="t"></td><td class="t"></td><td class="t"></td></tr>`;
+  html+=`<tr><td colspan="8" style="border:none;padding:4px;"></td></tr><tr><td colspan="8" style="background:${H};color:#fff;font-weight:bold;padding:7px;font-size:11pt;">PAYMENT METHOD</td></tr><tr><td class="h">Method / Card</td><td class="h r">Amount</td><td class="h r">%</td><td colspan="5" class="h"></td></tr>`;
+  pmKeys.forEach((pm,i)=>{const cl=i%2?'r1':'r0';html+=`<tr><td class="${cl}">${pm}</td><td class="${cl} r">${n(pmTotals[pm])}</td><td class="${cl} r">${pct(pmTotals[pm])}</td><td colspan="5" class="${cl}"></td></tr>`;});
+  if(moneyIn>0){
+    html+=`<tr><td colspan="8" style="border:none;padding:4px;"></td></tr><tr><td colspan="8" style="background:#2E7D32;color:#fff;font-weight:bold;padding:7px;">MONEY RECEIVED</td></tr><tr><td class="h">Description</td><td class="h r">Amount</td><td class="h">Date</td><td colspan="5" class="h"></td></tr>`;
+    (state.moneyIn[trip.id]||[]).forEach((x,i)=>{const cl=i%2?'r1':'r0';html+=`<tr><td class="${cl}">${x.desc}</td><td class="${cl} r">${n(x.amount)}</td><td class="${cl}">${x.date?fmt(x.date):''}</td><td colspan="5" class="${cl}"></td></tr>`;});
+    html+=`<tr><td class="t" style="background:#E8F5E9;">TOTAL RECEIVED</td><td class="t r" style="background:#E8F5E9;">${n(moneyIn)}</td><td colspan="6" class="t" style="background:#E8F5E9;"></td></tr>`;
+  }
+  html+=`</table><table style="page-break-after:always;width:100%;border-collapse:collapse;">
+<tr><td colspan="9" class="ttl">✈ ${trip.dest} — All Expenses</td></tr><tr><td colspan="9" style="border:none;padding:3px;"></td></tr>
+<tr><td class="h">Date</td><td class="h" style="width:25%">Description</td><td class="h">Category</td><td class="h">Payment</td><td class="h">Card</td><td class="h r">Amount (${baseCur})</td><td class="h r">Orig Amt</td><td class="h">Orig Cur</td><td class="h">Notes</td></tr>`;
+  sorted.forEach((e,i)=>{
+    const base=e.amountBase||e.amount,cl=i%2?'r1':'r0';
+    const orig=e.currency&&e.currency!==baseCur?n(e.amount):'';
+    const origCur=e.currency&&e.currency!==baseCur?e.currency:'';
+    html+=`<tr><td class="${cl}">${e.date?fmt(e.date):''}</td><td class="${cl}">${e.name}</td><td class="${cl}">${(CAT_ICONS[e.cat]||'')} ${e.cat}</td><td class="${cl}">${e.payMethod||''}</td><td class="${cl}">${e.cardName||''}</td><td class="${cl} r">${n(base)}</td><td class="${cl} r">${orig}</td><td class="${cl}">${origCur}</td><td class="${cl}">${e.note||''}</td></tr>`;
+  });
+  html+=`<tr><td class="t"></td><td class="t">TOTAL</td><td class="t"></td><td class="t"></td><td class="t"></td><td class="t r">${n(total)}</td><td class="t"></td><td class="t"></td><td class="t"></td></tr></table>`;
+  html+=`<table style="width:100%;border-collapse:collapse;"><tr><td colspan="7" class="ttl">✈ ${trip.dest} — Category Summary</td></tr><tr><td colspan="7" style="border:none;padding:3px;"></td></tr><tr><td class="h">Category</td><td class="h r">Amount</td><td class="h r">%</td><td class="h r">Items</td><td class="h r">Avg/Item</td><td class="h">Biggest</td><td class="h r">Biggest Amt</td></tr>`;
+  catKeys.forEach((cat,i)=>{
+    const a=catTotals[cat],cnt=catCounts[cat],cl=i%2?'r1':'r0';
+    const big=[...expenses].filter(e=>e.cat===cat).sort((a2,b)=>(b.amountBase||b.amount)-(a2.amountBase||a2.amount))[0];
+    html+=`<tr><td class="${cl}">${(CAT_ICONS[cat]||'')} ${cat}</td><td class="${cl} r">${n(a)}</td><td class="${cl} r">${pct(a)}</td><td class="${cl} r">${cnt}</td><td class="${cl} r">${n(cnt?a/cnt:0)}</td><td class="${cl}">${big?big.name:''}</td><td class="${cl} r">${big?n(big.amountBase||big.amount):''}</td></tr>`;
+  });
+  html+=`<tr><td class="t">GRAND TOTAL</td><td class="t r">${n(total)}</td><td class="t r">100%</td><td class="t r">${expenses.length}</td><td class="t r">${n(expenses.length?total/expenses.length:0)}</td><td class="t"></td><td class="t"></td></tr></table></body></html>`;
+  const blob=new Blob([html],{type:'application/vnd.ms-excel;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const now=new Date(),ds=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+  const a2=document.createElement('a');
+  a2.href=url;a2.download='Budget-'+trip.dest.replace(/[^a-z0-9]/gi,'-')+'-'+ds+'.xls';
+  document.body.appendChild(a2);a2.click();document.body.removeChild(a2);
+  URL.revokeObjectURL(url);
+  showToast('Budget exported ✅');
 }
 function tryOpenApp(appUrl, webUrl) {
   // Try native app first via URL scheme, fall back to web
