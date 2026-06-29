@@ -2583,206 +2583,270 @@ function exportBudgetExcel() {
   if (!trip) { showToast('Select a trip first'); return; }
   const expenses = state.expenses[trip.id] || [];
   if (!expenses.length) { showToast('No expenses to export'); return; }
+  try {
+    const wb = buildWorkbook(trip, expenses);
+    const bytes = writeXLSX(wb);
+    const blob = new Blob([bytes], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const url = URL.createObjectURL(blob);
+    const now = new Date();
+    const ds = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'Budget-'+trip.dest.replace(/[^a-z0-9]/gi,'-')+'-'+ds+'.xlsx';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('Excel file exported ✅');
+  } catch(e) { console.error(e); showToast('Export failed: '+e.message); }
+}
+function buildWorkbook(trip, expenses) {
   const baseCur = trip.currency || 'USD';
   const moneyIn = (state.moneyIn?.[trip.id]||[]).reduce((s,x)=>s+x.amount,0);
   const total = expenses.reduce((s,e)=>s+(e.amountBase||e.amount),0);
   const budget = (trip.budget||0)+moneyIn;
   const remaining = budget - total;
-  const catTotals={},catCounts={},pmTotals={};
+  const catTotals={}, catCounts={}, pmTotals={};
   expenses.forEach(e=>{
     const a=e.amountBase||e.amount;
-    catTotals[e.cat]=(catTotals[e.cat]||0)+a;
-    catCounts[e.cat]=(catCounts[e.cat]||0)+1;
-    const pm=e.payMethod==='💳 Credit Card'&&e.cardName?'CC: '+e.cardName:(e.payMethod||'Cash');
+    catTotals[e.cat]=(catTotals[e.cat]||0)+a; catCounts[e.cat]=(catCounts[e.cat]||0)+1;
+    const pm=e.payMethod==='💳 Credit Card'&&e.cardName?e.cardName:(e.payMethod||'Cash');
     pmTotals[pm]=(pmTotals[pm]||0)+a;
   });
-  const sorted=[...expenses].sort((a,b)=>(a.date||'').localeCompare(b.date||''));
   const catKeys=Object.keys(catTotals).sort((a,b)=>catTotals[b]-catTotals[a]);
-  const pmKeys=Object.keys(pmTotals).sort((a,b)=>pmTotals[b]-pmTotals[a]);
-  const n=v=>parseFloat(v||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
-  const pct=v=>total?(v/total*100).toFixed(1)+'%':'0%';
-  const H='#1E3A5F';
-  let html=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>Dashboard</x:Name></x:ExcelWorksheet><x:ExcelWorksheet><x:Name>Expenses</x:Name></x:ExcelWorksheet><x:ExcelWorksheet><x:Name>Summary</x:Name></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--><style>body{font-family:Arial,sans-serif;font-size:10pt;}td{border:1px solid #ccc;padding:5px 8px;vertical-align:middle;}.h{background:${H};color:#fff;font-weight:bold;text-align:center;}.t{font-weight:bold;background:#E3F2FD;}.r{text-align:right;}.r0{background:#fff;}.r1{background:#F0F4FF;}.ttl{font-size:14pt;font-weight:bold;color:${H};border:none;}.sub{font-size:10pt;color:#555;border:none;}.kp{background:#E3F2FD;border:2px solid ${H};text-align:center;padding:10px;}.kpn{font-size:13pt;font-weight:bold;color:${H};}.kpl{font-size:8pt;color:#555;}</style></head><body>`;
-  html = html.replace(/\$\{H\}/g, H);
-  html+=`<table style="page-break-after:always;width:100%;border-collapse:collapse;">
-<tr><td colspan="8" class="ttl">✈ VOYAGE — ${trip.dest} Budget Report</td></tr>
-<tr><td colspan="8" class="sub">${trip.start?fmt(trip.start):''} ${trip.end?'→ '+fmt(trip.end):''} | ${baseCur} | ${new Date().toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</td></tr>
-<tr><td colspan="8" style="border:none;padding:4px;"></td></tr>
-<tr><td colspan="2" class="kp"><div class="kpl">BUDGET</div><div class="kpn">${n(budget)}</div></td>
-<td colspan="2" class="kp"><div class="kpl">SPENT</div><div class="kpn" style="color:${total>budget?'#C62828':'#1565C0'}">${n(total)}</div></td>
-<td colspan="2" class="kp"><div class="kpl">REMAINING</div><div class="kpn" style="color:${remaining>=0?'#2E7D32':'#C62828'}">${n(remaining)}</div></td>
-<td colspan="2" class="kp"><div class="kpl">EXPENSES</div><div class="kpn">${expenses.length}</div></td></tr>
-<tr><td colspan="8" style="border:none;padding:4px;"></td></tr>
-<tr><td colspan="8" style="background:${H};color:#fff;font-weight:bold;padding:7px;font-size:11pt;">CATEGORY BREAKDOWN</td></tr>
-<tr><td class="h">Category</td><td class="h r">Amount (${baseCur})</td><td class="h r">% Share</td><td class="h r">Items</td><td class="h r">Avg/Item</td><td class="h">Biggest Expense</td><td class="h r">Biggest Amt</td><td class="h"></td></tr>`;
-  catKeys.forEach((cat,i)=>{
-    const a=catTotals[cat],cnt=catCounts[cat],cl=i%2?'r1':'r0';
-    const big=[...expenses].filter(e=>e.cat===cat).sort((a2,b)=>(b.amountBase||b.amount)-(a2.amountBase||a2.amount))[0];
-    html+=`<tr><td class="${cl}">${(CAT_ICONS[cat]||'')} ${cat}</td><td class="${cl} r">${n(a)}</td><td class="${cl} r">${pct(a)}</td><td class="${cl} r">${cnt}</td><td class="${cl} r">${n(cnt?a/cnt:0)}</td><td class="${cl}">${big?big.name:''}</td><td class="${cl} r">${big?n(big.amountBase||big.amount):''}</td><td class="${cl}"></td></tr>`;
-  });
-  html+=`<tr><td class="t">TOTAL</td><td class="t r">${n(total)}</td><td class="t r">100%</td><td class="t r">${expenses.length}</td><td class="t r">${n(expenses.length?total/expenses.length:0)}</td><td class="t"></td><td class="t"></td><td class="t"></td></tr>`;
-  html+=`<tr><td colspan="8" style="border:none;padding:4px;"></td></tr><tr><td colspan="8" style="background:${H};color:#fff;font-weight:bold;padding:7px;font-size:11pt;">PAYMENT METHOD</td></tr><tr><td class="h">Method / Card</td><td class="h r">Amount</td><td class="h r">%</td><td colspan="5" class="h"></td></tr>`;
-  pmKeys.forEach((pm,i)=>{const cl=i%2?'r1':'r0';html+=`<tr><td class="${cl}">${pm}</td><td class="${cl} r">${n(pmTotals[pm])}</td><td class="${cl} r">${pct(pmTotals[pm])}</td><td colspan="5" class="${cl}"></td></tr>`;});
-  if(moneyIn>0){
-    html+=`<tr><td colspan="8" style="border:none;padding:4px;"></td></tr><tr><td colspan="8" style="background:#2E7D32;color:#fff;font-weight:bold;padding:7px;">MONEY RECEIVED</td></tr><tr><td class="h">Description</td><td class="h r">Amount</td><td class="h">Date</td><td colspan="5" class="h"></td></tr>`;
-    (state.moneyIn[trip.id]||[]).forEach((x,i)=>{const cl=i%2?'r1':'r0';html+=`<tr><td class="${cl}">${x.desc}</td><td class="${cl} r">${n(x.amount)}</td><td class="${cl}">${x.date?fmt(x.date):''}</td><td colspan="5" class="${cl}"></td></tr>`;});
-    html+=`<tr><td class="t" style="background:#E8F5E9;">TOTAL RECEIVED</td><td class="t r" style="background:#E8F5E9;">${n(moneyIn)}</td><td colspan="6" class="t" style="background:#E8F5E9;"></td></tr>`;
-  }
-  html+=`</table><table style="page-break-after:always;width:100%;border-collapse:collapse;">
-<tr><td colspan="9" class="ttl">✈ ${trip.dest} — All Expenses</td></tr><tr><td colspan="9" style="border:none;padding:3px;"></td></tr>
-<tr><td class="h">Date</td><td class="h" style="width:25%">Description</td><td class="h">Category</td><td class="h">Payment</td><td class="h">Card</td><td class="h r">Amount (${baseCur})</td><td class="h r">Orig Amt</td><td class="h">Orig Cur</td><td class="h">Notes</td></tr>`;
+  const sorted=[...expenses].sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  const n=v=>Math.round(parseFloat(v)||0);
+  // Sheet 1: Dashboard
+  const d1=[];
+  d1.push([{v:'VOYAGE BUDGET REPORT',t:'s',s:'title'},{},{},{},{}]);
+  d1.push([{v:trip.dest+(trip.start?' | '+fmt(trip.start):'')+( trip.end?' to '+fmt(trip.end):''),t:'s',s:'subtitle'},{},{},{},{}]);
+  d1.push([]);
+  d1.push([{v:'SUMMARY',t:'s',s:'hdr'},{v:'',s:'hdr'},{v:'',s:'hdr'},{v:'',s:'hdr'},{v:'',s:'hdr'}]);
+  d1.push([{v:'Total Budget',t:'s',s:'lbl'},{v:n(budget),t:'n',s:'amt'},{v:'',t:'s'},{v:'Total Spent',t:'s',s:'lbl'},{v:n(total),t:'n',s:'amt'}]);
+  d1.push([{v:'Money Received',t:'s',s:'lbl'},{v:n(moneyIn),t:'n',s:'amt'},{v:'',t:'s'},{v:'Remaining',t:'s',s:'lbl'},{v:n(remaining),t:'n',s:remaining>=0?'amt_g':'amt_r'}]);
+  d1.push([{v:'# Expenses',t:'s',s:'lbl'},{v:expenses.length,t:'n',s:'num'},{v:'',t:'s'},{v:'% Used',t:'s',s:'lbl'},{v:budget?+(total/budget*100).toFixed(1):0,t:'n',s:'pct'}]);
+  d1.push([]);
+  d1.push([{v:'CATEGORY BREAKDOWN',t:'s',s:'hdr'},{v:'',s:'hdr'},{v:'',s:'hdr'},{v:'',s:'hdr'},{v:'',s:'hdr'}]);
+  d1.push([{v:'Category',t:'s',s:'col_h'},{v:'Amount ('+baseCur+')',t:'s',s:'col_h'},{v:'% Share',t:'s',s:'col_h'},{v:'Items',t:'s',s:'col_h'},{v:'Avg/Item',t:'s',s:'col_h'}]);
+  catKeys.forEach((cat,i)=>{const a=catTotals[cat],cnt=catCounts[cat];d1.push([{v:cat,t:'s',s:i%2?'r1':'r0'},{v:n(a),t:'n',s:i%2?'r1n':'r0n'},{v:budget?+(a/budget*100).toFixed(1):0,t:'n',s:i%2?'r1p':'r0p'},{v:cnt,t:'n',s:i%2?'r1':'r0'},{v:n(cnt?a/cnt:0),t:'n',s:i%2?'r1n':'r0n'}]);});
+  d1.push([{v:'TOTAL',t:'s',s:'tot'},{v:n(total),t:'n',s:'tot_n'},{v:100,t:'n',s:'tot_p'},{v:expenses.length,t:'n',s:'tot'},{v:n(expenses.length?total/expenses.length:0),t:'n',s:'tot_n'}]);
+  d1.push([]);
+  d1.push([{v:'PAYMENT METHOD',t:'s',s:'hdr'},{v:'',s:'hdr'},{v:'',s:'hdr'},{v:'',s:'hdr'},{v:'',s:'hdr'}]);
+  d1.push([{v:'Method / Card',t:'s',s:'col_h'},{v:'Amount',t:'s',s:'col_h'},{v:'%',t:'s',s:'col_h'},{v:'',t:'s',s:'col_h'},{v:'',t:'s',s:'col_h'}]);
+  Object.keys(pmTotals).sort((a,b)=>pmTotals[b]-pmTotals[a]).forEach((pm,i)=>{d1.push([{v:pm,t:'s',s:i%2?'r1':'r0'},{v:n(pmTotals[pm]),t:'n',s:i%2?'r1n':'r0n'},{v:total?+(pmTotals[pm]/total*100).toFixed(1):0,t:'n',s:i%2?'r1p':'r0p'},{t:'s',s:i%2?'r1':'r0'},{t:'s',s:i%2?'r1':'r0'}]);});
+  // Sheet 2: All Expenses
+  const d2=[];
+  d2.push([{v:'Date',t:'s',s:'col_h'},{v:'Description',t:'s',s:'col_h'},{v:'Category',t:'s',s:'col_h'},{v:'Payment',t:'s',s:'col_h'},{v:'Card',t:'s',s:'col_h'},{v:'Amount ('+baseCur+')',t:'s',s:'col_h'},{v:'Orig Amt',t:'s',s:'col_h'},{v:'Orig Cur',t:'s',s:'col_h'},{v:'Notes',t:'s',s:'col_h'}]);
   sorted.forEach((e,i)=>{
-    const base=e.amountBase||e.amount,cl=i%2?'r1':'r0';
+    const base=e.amountBase||e.amount,s=i%2?'r1':'r0',sn=i%2?'r1n':'r0n';
     const orig=e.currency&&e.currency!==baseCur?n(e.amount):'';
-    const origCur=e.currency&&e.currency!==baseCur?e.currency:'';
-    html+=`<tr><td class="${cl}">${e.date?fmt(e.date):''}</td><td class="${cl}">${e.name}</td><td class="${cl}">${(CAT_ICONS[e.cat]||'')} ${e.cat}</td><td class="${cl}">${e.payMethod||''}</td><td class="${cl}">${e.cardName||''}</td><td class="${cl} r">${n(base)}</td><td class="${cl} r">${orig}</td><td class="${cl}">${origCur}</td><td class="${cl}">${e.note||''}</td></tr>`;
+    d2.push([{v:e.date?fmt(e.date):'',t:'s',s},{v:e.name,t:'s',s},{v:e.cat,t:'s',s},{v:e.payMethod||'',t:'s',s},{v:e.cardName||'',t:'s',s},{v:n(base),t:'n',s:sn},{v:orig,t:orig?'n':'s',s:sn},{v:e.currency&&e.currency!==baseCur?e.currency:'',t:'s',s},{v:e.note||'',t:'s',s}]);
   });
-  html+=`<tr><td class="t"></td><td class="t">TOTAL</td><td class="t"></td><td class="t"></td><td class="t"></td><td class="t r">${n(total)}</td><td class="t"></td><td class="t"></td><td class="t"></td></tr></table>`;
-  html+=`<table style="width:100%;border-collapse:collapse;"><tr><td colspan="7" class="ttl">✈ ${trip.dest} — Category Summary</td></tr><tr><td colspan="7" style="border:none;padding:3px;"></td></tr><tr><td class="h">Category</td><td class="h r">Amount</td><td class="h r">%</td><td class="h r">Items</td><td class="h r">Avg/Item</td><td class="h">Biggest</td><td class="h r">Biggest Amt</td></tr>`;
+  d2.push([{v:'',t:'s',s:'tot'},{v:'TOTAL',t:'s',s:'tot'},{v:'',t:'s',s:'tot'},{v:'',t:'s',s:'tot'},{v:'',t:'s',s:'tot'},{v:n(total),t:'n',s:'tot_n'},{v:'',t:'s',s:'tot'},{v:'',t:'s',s:'tot'},{v:'',t:'s',s:'tot'}]);
+  // Sheet 3: Category Summary
+  const d3=[];
+  d3.push([{v:'Category',t:'s',s:'col_h'},{v:'Amount',t:'s',s:'col_h'},{v:'%',t:'s',s:'col_h'},{v:'Items',t:'s',s:'col_h'},{v:'Avg/Item',t:'s',s:'col_h'},{v:'Biggest Expense',t:'s',s:'col_h'},{v:'Biggest Amt',t:'s',s:'col_h'}]);
   catKeys.forEach((cat,i)=>{
-    const a=catTotals[cat],cnt=catCounts[cat],cl=i%2?'r1':'r0';
-    const big=[...expenses].filter(e=>e.cat===cat).sort((a2,b)=>(b.amountBase||b.amount)-(a2.amountBase||a2.amount))[0];
-    html+=`<tr><td class="${cl}">${(CAT_ICONS[cat]||'')} ${cat}</td><td class="${cl} r">${n(a)}</td><td class="${cl} r">${pct(a)}</td><td class="${cl} r">${cnt}</td><td class="${cl} r">${n(cnt?a/cnt:0)}</td><td class="${cl}">${big?big.name:''}</td><td class="${cl} r">${big?n(big.amountBase||big.amount):''}</td></tr>`;
+    const a=catTotals[cat],cnt=catCounts[cat],si=i%2?'r1':'r0',sin=i%2?'r1n':'r0n';
+    const big=[...expenses].filter(e=>e.cat===cat).sort((x,y)=>(y.amountBase||y.amount)-(x.amountBase||x.amount))[0];
+    d3.push([{v:cat,t:'s',s:si},{v:n(a),t:'n',s:sin},{v:total?+(a/total*100).toFixed(1):0,t:'n',s:i%2?'r1p':'r0p'},{v:cnt,t:'n',s:si},{v:n(cnt?a/cnt:0),t:'n',s:sin},{v:big?big.name:'',t:'s',s:si},{v:big?n(big.amountBase||big.amount):0,t:'n',s:sin}]);
   });
-  html+=`<tr><td class="t">GRAND TOTAL</td><td class="t r">${n(total)}</td><td class="t r">100%</td><td class="t r">${expenses.length}</td><td class="t r">${n(expenses.length?total/expenses.length:0)}</td><td class="t"></td><td class="t"></td></tr></table></body></html>`;
-  const blob=new Blob([html],{type:'application/vnd.ms-excel;charset=utf-8'});
-  const url=URL.createObjectURL(blob);
-  const now=new Date(),ds=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
-  const a2=document.createElement('a');
-  a2.href=url;a2.download='Budget-'+trip.dest.replace(/[^a-z0-9]/gi,'-')+'-'+ds+'.xls';
-  document.body.appendChild(a2);a2.click();document.body.removeChild(a2);
-  URL.revokeObjectURL(url);
-  showToast('Budget exported ✅');
+  d3.push([{v:'GRAND TOTAL',t:'s',s:'tot'},{v:n(total),t:'n',s:'tot_n'},{v:100,t:'n',s:'tot_p'},{v:expenses.length,t:'n',s:'tot'},{v:n(expenses.length?total/expenses.length:0),t:'n',s:'tot_n'},{v:'',t:'s',s:'tot'},{v:'',t:'s',s:'tot'}]);
+  return { sheets:[
+    {name:'Dashboard',data:d1,cols:[28,16,12,20,16]},
+    {name:'Expenses',data:d2,cols:[12,32,16,16,14,14,12,10,20]},
+    {name:'Summary',data:d3,cols:[22,14,10,10,14,28,14]}
+  ]};
+}
+// ── Minimal XLSX binary writer ──
+function writeXLSX(wb) {
+  const STYLES = {
+    title:   {font:{sz:15,bold:1,color:'1E3A5F'},fill:null,align:'left'},
+    subtitle:{font:{sz:11,color:'555555'},fill:null,align:'left'},
+    hdr:     {font:{sz:11,bold:1,color:'FFFFFF'},fill:'1E3A5F',align:'left'},
+    col_h:   {font:{sz:10,bold:1,color:'FFFFFF'},fill:'1E3A5F',align:'center'},
+    lbl:     {font:{sz:10,bold:1},fill:'F5F5F5',align:'left'},
+    amt:     {font:{sz:12,bold:1,color:'1565C0'},fill:'F5F5F5',align:'right',numFmt:'#,##0'},
+    amt_g:   {font:{sz:12,bold:1,color:'2E7D32'},fill:'E8F5E9',align:'right',numFmt:'#,##0'},
+    amt_r:   {font:{sz:12,bold:1,color:'C62828'},fill:'FFEBEE',align:'right',numFmt:'#,##0'},
+    num:     {font:{sz:12,bold:1},fill:'F5F5F5',align:'right'},
+    pct:     {font:{sz:12,bold:1,color:'1565C0'},fill:'F5F5F5',align:'right',numFmt:'0.0"%"'},
+    r0:      {font:{sz:10},fill:'FFFFFF',align:'left'},
+    r1:      {font:{sz:10},fill:'F0F4FF',align:'left'},
+    r0n:     {font:{sz:10},fill:'FFFFFF',align:'right',numFmt:'#,##0'},
+    r1n:     {font:{sz:10},fill:'F0F4FF',align:'right',numFmt:'#,##0'},
+    r0p:     {font:{sz:10},fill:'FFFFFF',align:'right',numFmt:'0.0"%"'},
+    r1p:     {font:{sz:10},fill:'F0F4FF',align:'right',numFmt:'0.0"%"'},
+    tot:     {font:{sz:10,bold:1},fill:'E3F2FD',align:'left'},
+    tot_n:   {font:{sz:10,bold:1},fill:'E3F2FD',align:'right',numFmt:'#,##0'},
+    tot_p:   {font:{sz:10,bold:1},fill:'E3F2FD',align:'right',numFmt:'0.0"%"'},
+  };
+  const styleKeys=Object.keys(STYLES);
+  const styleIndex=name=>styleKeys.indexOf(name)+1;
+  function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+  function col26(n){let r='';do{r=String.fromCharCode(65+n%26)+r;n=Math.floor(n/26)-1;}while(n>=0);return r;}
+  function cellRef(r,c){return col26(c)+(r+1);}
+  // Shared strings table
+  const sst=[]; const sstMap={};
+  function addStr(s){const k=String(s||'');if(sstMap[k]===undefined){sstMap[k]=sst.length;sst.push(k);}return sstMap[k];}
+  // Pre-collect strings
+  wb.sheets.forEach(sh=>sh.data.forEach(row=>row.forEach(cell=>{if(cell&&cell.t==='s')addStr(cell.v);})));
+  function sheetXML(sh) {
+    let xml='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheetData>';
+    sh.data.forEach((row,ri)=>{
+      if(!row||!row.length){xml+=`<row r="${ri+1}"/>`;return;}
+      xml+=`<row r="${ri+1}">`;
+      row.forEach((cell,ci)=>{
+        if(!cell&&cell!==0)return;
+        const ref=cellRef(ri,ci);
+        const si=cell.s?styleIndex(cell.s):0;
+        const sAttr=si?` s="${si}"`:'';
+        if(cell.t==='n'&&(cell.v||cell.v===0)){xml+=`<c r="${ref}" t="n"${sAttr}><v>${cell.v}</v></c>`;}
+        else if(cell.t==='s'){const idx=addStr(cell.v);xml+=`<c r="${ref}" t="s"${sAttr}><v>${idx}</v></c>`;}
+        else{xml+=`<c r="${ref}"${sAttr}/>`;}
+      });
+      xml+='</row>';
+    });
+    xml+='</sheetData>';
+    // Column widths
+    if(sh.cols){xml+='<cols>';sh.cols.forEach((w,i)=>{xml+=`<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`;});xml+='</cols>';}
+    xml+='</worksheet>';
+    return xml;
+  }
+  function sstXML(){
+    let x=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${sst.length}" uniqueCount="${sst.length}">`;
+    sst.forEach(s=>{x+=`<si><t xml:space="preserve">${esc(s)}</t></si>`;});
+    return x+'</sst>';
+  }
+  function stylesXML(){
+    // numFmts
+    const fmts=[]; const fmtMap={'#,##0':164,'0.0"%"':165};
+    let numFmtsXML='<numFmts count="2"><numFmt numFmtId="164" formatCode="#,##0"/><numFmt numFmtId="165" formatCode="0.0&quot;%&quot;"/></numFmts>';
+    // fonts
+    let fontsXML='<fonts count="'+(styleKeys.length+1)+'">';
+    fontsXML+='<font><sz val="10"/><name val="Arial"/></font>';
+    styleKeys.forEach(k=>{const f=STYLES[k].font||{};fontsXML+=`<font>${f.sz?`<sz val="${f.sz}"/>`:'<sz val="10"/>'} ${f.bold?'<b/>':''} ${f.color?`<color rgb="FF${f.color}"/>`:'<color theme="1"/>'}<name val="Arial"/></font>`;});
+    fontsXML+='</fonts>';
+    // fills
+    let fillsXML='<fills count="'+(styleKeys.length+2)+'"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>';
+    styleKeys.forEach(k=>{const f=STYLES[k].fill;fillsXML+=f?`<fill><patternFill patternType="solid"><fgColor rgb="FF${f}"/></patternFill></fill>`:'<fill><patternFill patternType="none"/></fill>';});
+    fillsXML+='</fills>';
+    // borders
+    let bordersXML='<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFCCCCCC"/></left><right style="thin"><color rgb="FFCCCCCC"/></right><top style="thin"><color rgb="FFCCCCCC"/></top><bottom style="thin"><color rgb="FFCCCCCC"/></bottom><diagonal/></border></borders>';
+    // cellStyleXfs + cellXfs
+    let xfsXML='<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="'+(styleKeys.length+1)+'"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>';
+    styleKeys.forEach((k,i)=>{
+      const st=STYLES[k];
+      const nfId=st.numFmt?(fmtMap[st.numFmt]||0):0;
+      const al=st.align||'left';
+      xfsXML+=`<xf numFmtId="${nfId}" fontId="${i+1}" fillId="${i+2}" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="${al}" vertical="center" wrapText="0"/></xf>`;
+    });
+    xfsXML+='</cellXfs>';
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">${numFmtsXML}${fontsXML}${fillsXML}${bordersXML}${xfsXML}<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+  }
+  function workbookXML(){
+    let x=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>`;
+    wb.sheets.forEach((sh,i)=>{x+=`<sheet name="${esc(sh.name)}" sheetId="${i+1}" r:id="rId${i+1}"/>`;});
+    return x+'</sheets></workbook>';
+  }
+  function wbRelsXML(){
+    let x=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">`;
+    wb.sheets.forEach((_,i)=>{x+=`<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i+1}.xml"/>`;});
+    x+=`<Relationship Id="rId${wb.sheets.length+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>`;
+    x+=`<Relationship Id="rId${wb.sheets.length+2}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`;
+    return x+'</Relationships>';
+  }
+  const files={
+    '[Content_Types].xml':`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${wb.sheets.map((_,i)=>`<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}</Types>`,
+    '_rels/.rels':`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
+    'xl/workbook.xml':workbookXML(),
+    'xl/_rels/workbook.xml.rels':wbRelsXML(),
+    'xl/sharedStrings.xml':sstXML(),
+    'xl/styles.xml':stylesXML(),
+  };
+  wb.sheets.forEach((sh,i)=>{files[`xl/worksheets/sheet${i+1}.xml`]=sheetXML(sh);});
+  return zipFiles(files);
+}
+// ── Minimal ZIP writer ──
+function zipFiles(files) {
+const enc = s => {const b=new TextEncoder().encode(s);return b;};
+function crc32(b){let c=0xFFFFFFFF;for(let i=0;i<b.length;i++){c^=b[i];for(let j=0;j<8;j++)c=c&1?(c>>>1)^0xEDB88320:(c>>>1);}return(c^0xFFFFFFFF)>>>0;}
+function u16(n){return[n&0xFF,(n>>8)&0xFF];}
+function u32(n){return[n&0xFF,(n>>8)&0xFF,(n>>16)&0xFF,(n>>24)&0xFF];}
+function concat(...arrs){const tot=arrs.reduce((s,a)=>s+a.length,0);const out=new Uint8Array(tot);let off=0;arrs.forEach(a=>{out.set(a,off);off+=a.length;});return out;}
+const entries=[]; let offset=0;
+const localHeaders=[];
+Object.keys(files).forEach(name=>{ const nameBytes=enc(name); const data=enc(files[name]); const crc=crc32(data); const local=concat( new Uint8Array([0x50,0x4B,0x03,0x04]), new Uint8Array([20,0]),new Uint8Array([0,0]),new Uint8Array([0,0]), new Uint8Array([0,0,0,0]), new Uint8Array(u32(crc)), new Uint8Array(u32(data.length)),new Uint8Array(u32(data.length)), new Uint8Array(u16(nameBytes.length)),new Uint8Array([0,0]), nameBytes,data ); localHeaders.push(local); entries.push({name:nameBytes,crc,size:data.length,offset}); offset+=local.length;
+});
+const centralDir=entries.map(e=>{ return concat( new Uint8Array([0x50,0x4B,0x01,0x02]), new Uint8Array([20,0,20,0]),new Uint8Array([0,0]),new Uint8Array([0,0]), new Uint8Array([0,0,0,0]), new Uint8Array(u32(e.crc)), new Uint8Array(u32(e.size)),new Uint8Array(u32(e.size)), new Uint8Array(u16(e.name.length)),new Uint8Array([0,0,0,0,0,0,0,0,0,0]), new Uint8Array(u32(e.offset)), e.name );
+});
+const cdSize=centralDir.reduce((s,a)=>s+a.length,0);
+const eocd=concat( new Uint8Array([0x50,0x4B,0x05,0x06,0,0,0,0]), new Uint8Array(u16(entries.length)),new Uint8Array(u16(entries.length)), new Uint8Array(u32(cdSize)),new Uint8Array(u32(offset)), new Uint8Array([0,0])
+);
+return concat(...localHeaders,...centralDir,eocd);
 }
 function tryOpenApp(appUrl, webUrl) {
-  // Try native app first via URL scheme, fall back to web
-  const iframe = document.createElement('iframe');
-  iframe.style.display = 'none';
-  document.body.appendChild(iframe);
-  const start = Date.now();
-  iframe.src = appUrl;
-  setTimeout(() => {
-    document.body.removeChild(iframe);
-    if (Date.now() - start < 1500) window.open(webUrl, '_blank');
-  }, 800);
+// Try native app first via URL scheme, fall back to web
+const iframe = document.createElement('iframe');
+iframe.style.display = 'none';
+document.body.appendChild(iframe);
+const start = Date.now();
+iframe.src = appUrl;
+setTimeout(() => { document.body.removeChild(iframe); if (Date.now() - start < 1500) window.open(webUrl, '_blank');
+}, 800);
 }
 function switchTravelType(type, el) {
-  travelType = type;
-  document.querySelectorAll('#sheet-add-travel .chip').forEach(c => c.classList.remove('active'));
-  el.classList.add('active');
-  document.getElementById('flight-form').style.display = type === 'flight' ? 'block' : 'none';
-  document.getElementById('hotel-form').style.display = type === 'hotel' ? 'block' : 'none';
+travelType = type;
+document.querySelectorAll('#sheet-add-travel .chip').forEach(c => c.classList.remove('active'));
+el.classList.add('active');
+document.getElementById('flight-form').style.display = type === 'flight' ? 'block' : 'none';
+document.getElementById('hotel-form').style.display = type === 'hotel' ? 'block' : 'none';
 }
 function renderFlights() {
-  const trip = getActiveTrip('fl');
-  const selEl = document.getElementById('sel-trip-fl');
-  selEl.textContent = trip ? trip.dest : 'Select a trip';
-  const fList = document.getElementById('flights-list');
-  const hList = document.getElementById('hotels-list');
-  if (!trip) {
-    fList.innerHTML = `<div class="empty-state" style="padding:20px 0;"><div class="emoji">✈️</div><p>Select a trip first</p></div>`;
-    hList.innerHTML = '';
-    return;
-  }
-  const flights = state.flights[trip.id] || [];
-  const hotels = state.hotels[trip.id] || [];
-  fList.innerHTML = flights.length ? flights.map(f => {
-    const flightCode = (f.airline.replace(/\s/g,'') + f.number.replace(/\s/g,'')).toUpperCase();
-    // Flightradar24 deep link — opens app on iPhone if installed, else website
-    const fr24Url = `https://www.flightradar24.com/${flightCode}`;
-    const fr24AppUrl = `flightradar24://flight/${flightCode}`;
-    return `<div class="flight-card">
-      <div class="flight-header">
-        <div>
-          <div class="flight-airline">${f.airline}</div>
-          <a href="${fr24Url}" target="_blank" style="text-decoration:none;" onclick="tryOpenApp('${fr24AppUrl}','${fr24Url}');return false;">
-            <div class="flight-number" style="color:var(--sky);font-weight:700;display:flex;align-items:center;gap:5px;">
-              ${f.number}
-              <span style="font-size:9px;background:var(--sky);color:white;border-radius:4px;padding:2px 6px;font-weight:700;">📡 TRACK</span>
-            </div>
-          </a>
-        </div>
-        <span style="color:var(--muted);cursor:pointer;font-size:18px;" onclick="delFlight('${trip.id}','${f.id}')">🗑</span>
-      </div>
-      <div class="flight-route">
-        <div class="flight-city"><div class="flight-code">${f.from.toUpperCase()}</div><div class="flight-time">${f.dep||'—'}</div></div>
-        <div class="flight-line"><div class="flight-duration">${f.dur||''}</div><div class="flight-track"></div></div>
-        <div class="flight-city"><div class="flight-code">${f.to.toUpperCase()}</div><div class="flight-time">${f.arr||'—'}</div></div>
-      </div>
-      <div class="flight-detail-row">
-        <div class="flight-detail"><div class="flight-detail-label">Date</div><div class="flight-detail-value">${f.date?fmt(f.date):'—'}</div></div>
-        <div class="flight-detail"><div class="flight-detail-label">Seat</div><div class="flight-detail-value">${f.seat||'—'}</div></div>
-        <div class="flight-detail"><div class="flight-detail-label">Class</div><div class="flight-detail-value">${f.cls||'—'}</div></div>
-        <div class="flight-detail"><div class="flight-detail-label">PNR</div><div class="flight-detail-value">${f.pnr||'—'}</div></div>
-      </div>
-    </div>`;
-  }).join('') : `<div style="color:var(--muted);font-size:14px;padding:12px 0;">No flights added yet</div>`;
-  hList.innerHTML = hotels.length ? hotels.map(h => {
-    const mapsQuery = encodeURIComponent(h.addr ? `${h.name} ${h.addr}` : h.name);
-    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${mapsQuery}`;
-    return `<div class="hotel-card">
-      <div class="hotel-emoji">🏨</div>
-      <div class="hotel-info">
-        <div class="hotel-name">${h.name}</div>
-        <div class="hotel-dates">Check-in: ${h.checkin ? fmt(h.checkin) : '—'} → Check-out: ${h.checkout ? fmt(h.checkout) : '—'}</div>
-        ${h.ref ? `<div class="hotel-ref">Ref: ${h.ref}</div>` : ''}
-        ${h.addr ? `<a href="${mapsUrl}" target="_blank" style="font-size:12px;color:var(--sky);margin-top:5px;display:flex;align-items:center;gap:4px;text-decoration:none;font-weight:600;">📍 ${h.addr} <span style="font-size:10px;">→ Maps</span></a>` : ''}
-        <a href="${mapsUrl}" target="_blank" style="margin-top:8px;display:inline-flex;align-items:center;gap:5px;background:#34A853;color:white;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:700;text-decoration:none;">
-          🗺 Open in Google Maps
-        </a>
-      </div>
-      <span class="hotel-del" onclick="delHotel('${trip.id}','${h.id}')">🗑</span>
-    </div>`;
-  }).join('') : `<div style="color:var(--muted);font-size:14px;padding:12px 0;">No hotels added yet</div>`;
+const trip = getActiveTrip('fl');
+const selEl = document.getElementById('sel-trip-fl');
+selEl.textContent = trip ? trip.dest : 'Select a trip';
+const fList = document.getElementById('flights-list');
+const hList = document.getElementById('hotels-list');
+if (!trip) { fList.innerHTML = `<div class="empty-state" style="padding:20px 0;"><div class="emoji">✈️</div><p>Select a trip first</p></div>`; hList.innerHTML = ''; return;
+}
+const flights = state.flights[trip.id] || [];
+const hotels = state.hotels[trip.id] || [];
+fList.innerHTML = flights.length ? flights.map(f => { const flightCode = (f.airline.replace(/\s/g,'') + f.number.replace(/\s/g,'')).toUpperCase(); // Flightradar24 deep link — opens app on iPhone if installed, else website const fr24Url = `https://www.flightradar24.com/${flightCode}`; const fr24AppUrl = `flightradar24://flight/${flightCode}`; return `<div class="flight-card"> <div class="flight-header"> <div> <div class="flight-airline">${f.airline}</div> <a href="${fr24Url}" target="_blank" style="text-decoration:none;" onclick="tryOpenApp('${fr24AppUrl}','${fr24Url}');return false;"> <div class="flight-number" style="color:var(--sky);font-weight:700;display:flex;align-items:center;gap:5px;"> ${f.number} <span style="font-size:9px;background:var(--sky);color:white;border-radius:4px;padding:2px 6px;font-weight:700;">📡 TRACK</span> </div> </a> </div> <span style="color:var(--muted);cursor:pointer;font-size:18px;" onclick="delFlight('${trip.id}','${f.id}')">🗑</span> </div> <div class="flight-route"> <div class="flight-city"><div class="flight-code">${f.from.toUpperCase()}</div><div class="flight-time">${f.dep||'—'}</div></div> <div class="flight-line"><div class="flight-duration">${f.dur||''}</div><div class="flight-track"></div></div> <div class="flight-city"><div class="flight-code">${f.to.toUpperCase()}</div><div class="flight-time">${f.arr||'—'}</div></div> </div> <div class="flight-detail-row"> <div class="flight-detail"><div class="flight-detail-label">Date</div><div class="flight-detail-value">${f.date?fmt(f.date):'—'}</div></div> <div class="flight-detail"><div class="flight-detail-label">Seat</div><div class="flight-detail-value">${f.seat||'—'}</div></div> <div class="flight-detail"><div class="flight-detail-label">Class</div><div class="flight-detail-value">${f.cls||'—'}</div></div> <div class="flight-detail"><div class="flight-detail-label">PNR</div><div class="flight-detail-value">${f.pnr||'—'}</div></div> </div> </div>`;
+}).join('') : `<div style="color:var(--muted);font-size:14px;padding:12px 0;">No flights added yet</div>`;
+hList.innerHTML = hotels.length ? hotels.map(h => { const mapsQuery = encodeURIComponent(h.addr ? `${h.name} ${h.addr}` : h.name); const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${mapsQuery}`; return `<div class="hotel-card"> <div class="hotel-emoji">🏨</div> <div class="hotel-info"> <div class="hotel-name">${h.name}</div> <div class="hotel-dates">Check-in: ${h.checkin ? fmt(h.checkin) : '—'} → Check-out: ${h.checkout ? fmt(h.checkout) : '—'}</div> ${h.ref ? `<div class="hotel-ref">Ref: ${h.ref}</div>` : ''} ${h.addr ? `<a href="${mapsUrl}" target="_blank" style="font-size:12px;color:var(--sky);margin-top:5px;display:flex;align-items:center;gap:4px;text-decoration:none;font-weight:600;">📍 ${h.addr} <span style="font-size:10px;">→ Maps</span></a>` : ''} <a href="${mapsUrl}" target="_blank" style="margin-top:8px;display:inline-flex;align-items:center;gap:5px;background:#34A853;color:white;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:700;text-decoration:none;"> 🗺 Open in Google Maps </a> </div> <span class="hotel-del" onclick="delHotel('${trip.id}','${h.id}')">🗑</span> </div>`;
+}).join('') : `<div style="color:var(--muted);font-size:14px;padding:12px 0;">No hotels added yet</div>`;
 }
 function trackFlight(airline, number, date) {
-  const flightCode = (airline + number).replace(/\s/g,'').toUpperCase();
-  // Try FlightAware first, fall back to Google Flights
-  const flightAwareUrl = `https://www.flightaware.com/live/flight/${flightCode}`;
-  window.open(flightAwareUrl, '_blank');
+const flightCode = (airline + number).replace(/\s/g,'').toUpperCase();
+// Try FlightAware first, fall back to Google Flights
+const flightAwareUrl = `https://www.flightaware.com/live/flight/${flightCode}`;
+window.open(flightAwareUrl, '_blank');
 }
 function saveFlight() {
-  const trip = getActiveTrip('fl');
-  if (!trip) { showToast('Select a trip first'); return; }
-  const from = document.getElementById('inp-fl-from').value.trim();
-  const to = document.getElementById('inp-fl-to').value.trim();
-  if (!from || !to) { showToast('Enter origin and destination codes'); return; }
-  const f = {
-    id: uid(),
-    airline: document.getElementById('inp-fl-airline').value.trim(),
-    number: document.getElementById('inp-fl-number').value.trim(),
-    from, to,
-    dep: document.getElementById('inp-fl-dep').value,
-    arr: document.getElementById('inp-fl-arr').value,
-    date: document.getElementById('inp-fl-date').value,
-    dur: document.getElementById('inp-fl-dur').value.trim(),
-    seat: document.getElementById('inp-fl-seat').value.trim(),
-    cls: document.getElementById('inp-fl-class').value,
-    pnr: document.getElementById('inp-fl-pnr').value.trim()
-  };
-  state.flights[trip.id].push(f);
-  save(); renderFlights();
-  closeSheet('sheet-add-travel');
-  showToast('Flight added ✅');
-  ['inp-fl-airline','inp-fl-number','inp-fl-from','inp-fl-to','inp-fl-dep','inp-fl-arr','inp-fl-date','inp-fl-dur','inp-fl-seat','inp-fl-pnr'].forEach(id => document.getElementById(id).value = '');
+const trip = getActiveTrip('fl');
+if (!trip) { showToast('Select a trip first'); return; }
+const from = document.getElementById('inp-fl-from').value.trim();
+const to = document.getElementById('inp-fl-to').value.trim();
+if (!from || !to) { showToast('Enter origin and destination codes'); return; }
+const f = { id: uid(), airline: document.getElementById('inp-fl-airline').value.trim(), number: document.getElementById('inp-fl-number').value.trim(), from, to, dep: document.getElementById('inp-fl-dep').value, arr: document.getElementById('inp-fl-arr').value, date: document.getElementById('inp-fl-date').value, dur: document.getElementById('inp-fl-dur').value.trim(), seat: document.getElementById('inp-fl-seat').value.trim(), cls: document.getElementById('inp-fl-class').value, pnr: document.getElementById('inp-fl-pnr').value.trim()
+};
+state.flights[trip.id].push(f);
+save(); renderFlights();
+closeSheet('sheet-add-travel');
+showToast('Flight added ✅');
+['inp-fl-airline','inp-fl-number','inp-fl-from','inp-fl-to','inp-fl-dep','inp-fl-arr','inp-fl-date','inp-fl-dur','inp-fl-seat','inp-fl-pnr'].forEach(id => document.getElementById(id).value = '');
 }
 function saveHotel() {
-  const trip = getActiveTrip('fl');
-  if (!trip) { showToast('Select a trip first'); return; }
-  const name = document.getElementById('inp-ht-name').value.trim();
-  if (!name) { showToast('Enter hotel name'); return; }
-  const h = {
-    id: uid(), name,
-    checkin: document.getElementById('inp-ht-in').value,
-    checkout: document.getElementById('inp-ht-out').value,
-    ref: document.getElementById('inp-ht-ref').value.trim(),
-    addr: document.getElementById('inp-ht-addr').value.trim()
-  };
-  state.hotels[trip.id].push(h);
-  save(); renderFlights();
-  closeSheet('sheet-add-travel');
-  showToast('Hotel added ✅');
-  ['inp-ht-name','inp-ht-in','inp-ht-out','inp-ht-ref','inp-ht-addr'].forEach(id => document.getElementById(id).value = '');
+const trip = getActiveTrip('fl');
+if (!trip) { showToast('Select a trip first'); return; }
+const name = document.getElementById('inp-ht-name').value.trim();
+if (!name) { showToast('Enter hotel name'); return; }
+const h = { id: uid(), name, checkin: document.getElementById('inp-ht-in').value, checkout: document.getElementById('inp-ht-out').value, ref: document.getElementById('inp-ht-ref').value.trim(), addr: document.getElementById('inp-ht-addr').value.trim()
+};
+state.hotels[trip.id].push(h);
+save(); renderFlights();
+closeSheet('sheet-add-travel');
+showToast('Hotel added ✅');
+['inp-ht-name','inp-ht-in','inp-ht-out','inp-ht-ref','inp-ht-addr'].forEach(id => document.getElementById(id).value = '');
 }
 function delFlight(tripId, id) { state.flights[tripId] = state.flights[tripId].filter(f => f.id !== id); save(); renderFlights(); }
 function delHotel(tripId, id) { state.hotels[tripId] = state.hotels[tripId].filter(h => h.id !== id); save(); renderFlights(); }
@@ -2792,160 +2856,77 @@ let calViewDate = new Date();
 let calManualNav = false;
 let calSelectedDate = null;
 function toggleItineraryView() {
-  itineraryViewMode = itineraryViewMode === 'list' ? 'calendar' : 'list';
-  const btn = document.getElementById('cal-toggle-btn');
-  if (btn) btn.textContent = itineraryViewMode === 'calendar' ? '📋' : '📆';
-  renderItinerary();
+itineraryViewMode = itineraryViewMode === 'list' ? 'calendar' : 'list';
+const btn = document.getElementById('cal-toggle-btn');
+if (btn) btn.textContent = itineraryViewMode === 'calendar' ? '📋' : '📆';
+renderItinerary();
 }
 function renderItinerary() {
-  const trip = getActiveTrip('it');
-  const selEl = document.getElementById('sel-trip-it');
-  selEl.textContent = trip ? trip.dest : 'Select a trip';
-  const container = document.getElementById('itinerary-list');
-  if (!trip) { container.innerHTML = `<div class="empty-state"><div class="emoji">📅</div><p>Select a trip to view itinerary</p></div>`; return; }
-  const items = state.itineraries[trip.id] || [];
-  if (itineraryViewMode === 'calendar') {
-    renderCalendarView(trip, items, container);
-  } else {
-    renderListView(trip, items, container);
-  }
+const trip = getActiveTrip('it');
+const selEl = document.getElementById('sel-trip-it');
+selEl.textContent = trip ? trip.dest : 'Select a trip';
+const container = document.getElementById('itinerary-list');
+if (!trip) { container.innerHTML = `<div class="empty-state"><div class="emoji">📅</div><p>Select a trip to view itinerary</p></div>`; return; }
+const items = state.itineraries[trip.id] || [];
+if (itineraryViewMode === 'calendar') { renderCalendarView(trip, items, container);
+} else { renderListView(trip, items, container);
+}
 }
 function renderListView(trip, items, container) {
-  if (!items.length) { container.innerHTML = `<div class="empty-state"><div class="emoji">📋</div><p>No activities yet.<br>Tap + to plan your day</p></div>`; return; }
-  const byDay = {};
-  items.forEach(a => { if (!byDay[a.day]) byDay[a.day] = []; byDay[a.day].push(a); });
-  Object.keys(byDay).sort((a,b)=>a-b).forEach(d => byDay[d].sort((a,b)=>(a.time||'').localeCompare(b.time||'')));
-  container.innerHTML = Object.keys(byDay).sort((a,b)=>+a-+b).map(d => {
-    const dayDate = trip.start ? getDayDate(trip.start, +d) : '';
-    return `<div class="card">
-      <div class="day-header">
-        <div class="day-number">${d}</div>
-        <div><div class="day-label">Day ${d}</div><div class="day-date">${dayDate}</div></div>
-      </div>
-      ${byDay[d].map(a => `
-        <div class="activity-item">
-          <span class="activity-time">${a.time||'—'}</span>
-          <div class="activity-dot"></div>
-          <div class="activity-body">
-            <div class="activity-name">${a.name}</div>
-            ${a.note ? `<div class="activity-note">${a.note}</div>` : ''}
-          </div>
-          <span class="activity-del" onclick="delActivity('${trip.id}','${a.id}')">🗑</span>
-        </div>`).join('')}
-    </div>`;
-  }).join('');
+if (!items.length) { container.innerHTML = `<div class="empty-state"><div class="emoji">📋</div><p>No activities yet.<br>Tap + to plan your day</p></div>`; return; }
+const byDay = {};
+items.forEach(a => { if (!byDay[a.day]) byDay[a.day] = []; byDay[a.day].push(a); });
+Object.keys(byDay).sort((a,b)=>a-b).forEach(d => byDay[d].sort((a,b)=>(a.time||'').localeCompare(b.time||'')));
+container.innerHTML = Object.keys(byDay).sort((a,b)=>+a-+b).map(d => { const dayDate = trip.start ? getDayDate(trip.start, +d) : ''; return `<div class="card"> <div class="day-header"> <div class="day-number">${d}</div> <div><div class="day-label">Day ${d}</div><div class="day-date">${dayDate}</div></div> </div> ${byDay[d].map(a => ` <div class="activity-item"> <span class="activity-time">${a.time||'—'}</span> <div class="activity-dot"></div> <div class="activity-body"> <div class="activity-name">${a.name}</div> ${a.note ? `<div class="activity-note">${a.note}</div>` : ''} </div> <span class="activity-del" onclick="delActivity('${trip.id}','${a.id}')">🗑</span> </div>`).join('')} </div>`;
+}).join('');
 }
 function renderCalendarView(trip, items, container) {
-  // If trip has a start date, auto-navigate to that month on first load
-  if (trip.start && !calManualNav) {
-    calViewDate = new Date(trip.start + 'T12:00');
-  }
-  if (!trip.start) {
-    container.innerHTML = `
-      <div style="background:var(--sand-light);border:1.5px solid var(--sand);border-radius:12px;padding:14px;margin-bottom:16px;font-size:13px;color:#7a5c00;text-align:center;">
-        ⚠️ Set a trip start date to use calendar view.<br>
-        <button onclick="openSheet('sheet-trip')" style="margin-top:8px;background:var(--sand);color:white;border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;">Edit Trip</button>
-      </div>`;
-    return;
-  }
-  // Build date→activities map using trip.start + activity.day
-  const dateMap = {};
-  items.forEach(a => {
-    if (a.day) {
-      const d = new Date(trip.start + 'T12:00');
-      d.setDate(d.getDate() + (+a.day - 1));
-      const key = d.toISOString().slice(0,10);
-      if (!dateMap[key]) dateMap[key] = [];
-      dateMap[key].push(a);
-    }
-  });
-  const year = calViewDate.getFullYear();
-  const month = calViewDate.getMonth();
-  const monthName = calViewDate.toLocaleString('en-US', { month:'long', year:'numeric' });
-  const firstDayOfWeek = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month+1, 0).getDate();
-  const today = new Date().toISOString().slice(0,10);
-  // Mark trip days
-  const tripStart = new Date(trip.start + 'T12:00');
-  const tripEnd = trip.end ? new Date(trip.end + 'T12:00') : null;
-  let cells = '';
-  ['Su','Mo','Tu','We','Th','Fr','Sa'].forEach(d => {
-    cells += `<div class="cal-header-cell">${d}</div>`;
-  });
-  for (let i=0; i<firstDayOfWeek; i++) {
-    cells += `<div class="cal-cell other-month"></div>`;
-  }
-  for (let day=1; day<=daysInMonth; day++) {
-    const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-    const cellDate = new Date(dateStr + 'T12:00');
-    const dayEvents = dateMap[dateStr] || [];
-    const isToday = dateStr === today;
-    const isSelected = dateStr === calSelectedDate;
-    const isTripDay = tripStart && cellDate >= tripStart && (!tripEnd || cellDate <= tripEnd);
-    const hasEv = dayEvents.length > 0;
-    let cls = 'cal-cell';
-    if (isTripDay) cls += ' trip-day';
-    if (hasEv) cls += ' has-events';
-    if (isSelected) cls += ' cal-cell-selected';
-    if (isToday) cls += ' today';
-    // Show dots only — max 3 dots then +N — NO text in cells
-    const dotCount = Math.min(dayEvents.length, 3);
-    const dots = dayEvents.length > 0
-      ? `<div class="cal-dots">${Array(dotCount).fill('<div class="cal-dot"></div>').join('')}${dayEvents.length > 3 ? `<span class="cal-dot-more">+${dayEvents.length-3}</span>` : ''}</div>`
-      : '';
-    cells += `<div class="${cls}" onclick="selectCalDate('${dateStr}')">
-      <div class="cal-day-num">${day}</div>
-      ${dots}
-    </div>`;
-  }
-  // Selected day panel
-  let detail = '';
-  if (calSelectedDate) {
-    const selEvents = dateMap[calSelectedDate] || [];
-    const selLabel = new Date(calSelectedDate+'T12:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
-    // Figure out which trip day this is
-    const selCellDate = new Date(calSelectedDate+'T12:00');
-    const dayNum = Math.round((selCellDate - tripStart)/(1000*60*60*24)) + 1;
-    const isInTrip = dayNum >= 1 && (!tripEnd || selCellDate <= tripEnd);
-    detail = `<div class="cal-selected-day">
-      <div class="cal-selected-title">📅 ${selLabel}${isInTrip?' · Day '+dayNum:''}</div>
-      ${selEvents.length ? selEvents.sort((a,b)=>(a.time||'').localeCompare(b.time||'')).map(a=>`
-        <div class="activity-item">
-          <span class="activity-time">${a.time||'—'}</span>
-          <div class="activity-dot"></div>
-          <div class="activity-body">
-            <div class="activity-name">${a.name}</div>
-            ${a.note?`<div class="activity-note">${a.note}</div>`:''}
-          </div>
-          <span class="activity-del" onclick="delActivity('${trip.id}','${a.id}');calManualNav=true;renderItinerary()">🗑</span>
-        </div>`).join('')
-      : `<div style="font-size:13px;color:var(--muted);padding:8px 0;">No activities on this day.<br><span style="color:var(--sky);cursor:pointer;font-weight:600;" onclick="openSheet('sheet-activity')">+ Add to this day</span></div>`}
-    </div>`;
-  }
-  container.innerHTML = `
-    <div class="cal-month-nav">
-      <button class="cal-nav-btn" onclick="calPrevMonth()">‹</button>
-      <div class="cal-month-label">${monthName}</div>
-      <button class="cal-nav-btn" onclick="calNextMonth()">›</button>
-    </div>
-    <div class="cal-grid">${cells}</div>
-    ${detail}
-  `;
+// If trip has a start date, auto-navigate to that month on first load
+if (trip.start && !calManualNav) { calViewDate = new Date(trip.start + 'T12:00');
+}
+if (!trip.start) { container.innerHTML = ` <div style="background:var(--sand-light);border:1.5px solid var(--sand);border-radius:12px;padding:14px;margin-bottom:16px;font-size:13px;color:#7a5c00;text-align:center;"> ⚠️ Set a trip start date to use calendar view.<br> <button onclick="openSheet('sheet-trip')" style="margin-top:8px;background:var(--sand);color:white;border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;">Edit Trip</button> </div>`; return;
+}
+// Build date→activities map using trip.start + activity.day
+const dateMap = {};
+items.forEach(a => { if (a.day) { const d = new Date(trip.start + 'T12:00'); d.setDate(d.getDate() + (+a.day - 1)); const key = d.toISOString().slice(0,10); if (!dateMap[key]) dateMap[key] = []; dateMap[key].push(a); }
+});
+const year = calViewDate.getFullYear();
+const month = calViewDate.getMonth();
+const monthName = calViewDate.toLocaleString('en-US', { month:'long', year:'numeric' });
+const firstDayOfWeek = new Date(year, month, 1).getDay();
+const daysInMonth = new Date(year, month+1, 0).getDate();
+const today = new Date().toISOString().slice(0,10);
+// Mark trip days
+const tripStart = new Date(trip.start + 'T12:00');
+const tripEnd = trip.end ? new Date(trip.end + 'T12:00') : null;
+let cells = '';
+['Su','Mo','Tu','We','Th','Fr','Sa'].forEach(d => { cells += `<div class="cal-header-cell">${d}</div>`;
+});
+for (let i=0; i<firstDayOfWeek; i++) { cells += `<div class="cal-cell other-month"></div>`;
+}
+for (let day=1; day<=daysInMonth; day++) { const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`; const cellDate = new Date(dateStr + 'T12:00'); const dayEvents = dateMap[dateStr] || []; const isToday = dateStr === today; const isSelected = dateStr === calSelectedDate; const isTripDay = tripStart && cellDate >= tripStart && (!tripEnd || cellDate <= tripEnd); const hasEv = dayEvents.length > 0; let cls = 'cal-cell'; if (isTripDay) cls += ' trip-day'; if (hasEv) cls += ' has-events'; if (isSelected) cls += ' cal-cell-selected'; if (isToday) cls += ' today'; // Show dots only — max 3 dots then +N — NO text in cells const dotCount = Math.min(dayEvents.length, 3); const dots = dayEvents.length > 0 ? `<div class="cal-dots">${Array(dotCount).fill('<div class="cal-dot"></div>').join('')}${dayEvents.length > 3 ? `<span class="cal-dot-more">+${dayEvents.length-3}</span>` : ''}</div>` : ''; cells += `<div class="${cls}" onclick="selectCalDate('${dateStr}')"> <div class="cal-day-num">${day}</div> ${dots} </div>`;
+}
+// Selected day panel
+let detail = '';
+if (calSelectedDate) { const selEvents = dateMap[calSelectedDate] || []; const selLabel = new Date(calSelectedDate+'T12:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'}); // Figure out which trip day this is const selCellDate = new Date(calSelectedDate+'T12:00'); const dayNum = Math.round((selCellDate - tripStart)/(1000*60*60*24)) + 1; const isInTrip = dayNum >= 1 && (!tripEnd || selCellDate <= tripEnd); detail = `<div class="cal-selected-day"> <div class="cal-selected-title">📅 ${selLabel}${isInTrip?' · Day '+dayNum:''}</div> ${selEvents.length ? selEvents.sort((a,b)=>(a.time||'').localeCompare(b.time||'')).map(a=>` <div class="activity-item"> <span class="activity-time">${a.time||'—'}</span> <div class="activity-dot"></div> <div class="activity-body"> <div class="activity-name">${a.name}</div> ${a.note?`<div class="activity-note">${a.note}</div>`:''} </div> <span class="activity-del" onclick="delActivity('${trip.id}','${a.id}');calManualNav=true;renderItinerary()">🗑</span> </div>`).join('') : `<div style="font-size:13px;color:var(--muted);padding:8px 0;">No activities on this day.<br><span style="color:var(--sky);cursor:pointer;font-weight:600;" onclick="openSheet('sheet-activity')">+ Add to this day</span></div>`} </div>`;
+}
+container.innerHTML = ` <div class="cal-month-nav"> <button class="cal-nav-btn" onclick="calPrevMonth()">‹</button> <div class="cal-month-label">${monthName}</div> <button class="cal-nav-btn" onclick="calNextMonth()">›</button> </div> <div class="cal-grid">${cells}</div> ${detail}
+`;
 }
 function selectCalDate(dateStr) {
-  calSelectedDate = calSelectedDate === dateStr ? null : dateStr;
-  calManualNav = true;
-  renderItinerary();
+calSelectedDate = calSelectedDate === dateStr ? null : dateStr;
+calManualNav = true;
+renderItinerary();
 }
 function calPrevMonth() {
-  calViewDate.setMonth(calViewDate.getMonth()-1);
-  calManualNav = true;
-  renderItinerary();
+calViewDate.setMonth(calViewDate.getMonth()-1);
+calManualNav = true;
+renderItinerary();
 }
 function calNextMonth() {
-  calViewDate.setMonth(calViewDate.getMonth()+1);
-  calManualNav = true;
-  renderItinerary();
+calViewDate.setMonth(calViewDate.getMonth()+1);
+calManualNav = true;
+renderItinerary();
 }
 function uid() { return Math.random().toString(36).substr(2,9); }
 let _budgetTimer=null,_loungeTimer=null;
@@ -2954,672 +2935,464 @@ function debounceRenderLounge(){clearTimeout(_loungeTimer);_loungeTimer=setTimeo
 function renderAll() { renderTrips(); renderItinerary(); renderPacking(); renderBudget(); renderFlights(); renderReminders(); renderDashboard(); renderDocs(); renderLoungeCards(); }
 const DEFAULT_PACK_CATS = ['📄 Documents','👕 Clothes','🧴 Toiletries','💊 Health','🔌 Electronics','📦 Other'];
 function getAllPackCats() {
-  return [...DEFAULT_PACK_CATS, ...(state.customPackCats || [])];
+return [...DEFAULT_PACK_CATS, ...(state.customPackCats || [])];
 }
 function populatePackCatSelect() {
-  const sel = document.getElementById('inp-pack-cat');
-  if (!sel) return;
-  sel.innerHTML = getAllPackCats().map(c => `<option value="${c}">${c}</option>`).join('');
-  renderCustomCatTags();
+const sel = document.getElementById('inp-pack-cat');
+if (!sel) return;
+sel.innerHTML = getAllPackCats().map(c => `<option value="${c}">${c}</option>`).join('');
+renderCustomCatTags();
 }
 function renderCustomCatTags() {
-  const el = document.getElementById('custom-cats-display');
-  if (!el) return;
-  const cats = state.customPackCats || [];
-  el.innerHTML = cats.length
-    ? cats.map(c => `<span class="custom-cat-tag">${c} <span class="del-cat" onclick="deleteCustomCat('${c}')">×</span></span>`).join('')
-    : '<span style="font-size:12px;color:var(--muted);">No custom categories yet</span>';
+const el = document.getElementById('custom-cats-display');
+if (!el) return;
+const cats = state.customPackCats || [];
+el.innerHTML = cats.length ? cats.map(c => `<span class="custom-cat-tag">${c} <span class="del-cat" onclick="deleteCustomCat('${c}')">×</span></span>`).join('') : '<span style="font-size:12px;color:var(--muted);">No custom categories yet</span>';
 }
 function addCustomCategory() {
-  const inp = document.getElementById('inp-new-cat');
-  const val = inp.value.trim();
-  if (!val) { showToast('Enter a category name'); return; }
-  if (!state.customPackCats) state.customPackCats = [];
-  const full = '🏷 ' + val;
-  if (getAllPackCats().includes(full) || state.customPackCats.includes(full)) { showToast('Category already exists'); return; }
-  state.customPackCats.push(full);
-  inp.value = '';
-  save();
-  populatePackCatSelect();
-  showToast('Category added ✅');
+const inp = document.getElementById('inp-new-cat');
+const val = inp.value.trim();
+if (!val) { showToast('Enter a category name'); return; }
+if (!state.customPackCats) state.customPackCats = [];
+const full = '🏷 ' + val;
+if (getAllPackCats().includes(full) || state.customPackCats.includes(full)) { showToast('Category already exists'); return; }
+state.customPackCats.push(full);
+inp.value = '';
+save();
+populatePackCatSelect();
+showToast('Category added ✅');
 }
 function deleteCustomCat(cat) {
-  state.customPackCats = (state.customPackCats || []).filter(c => c !== cat);
-  save();
-  populatePackCatSelect();
+state.customPackCats = (state.customPackCats || []).filter(c => c !== cat);
+save();
+populatePackCatSelect();
 }
 let notifPermission = 'default';
 let scheduledNotifs = {};
 async function requestNotifPermission() {
-  if (!('Notification' in window)) { showToast('Notifications not supported in this browser'); return; }
-  const result = await Notification.requestPermission();
-  notifPermission = result;
-  renderNotifBanner();
-  if (result === 'granted') showToast('Notifications enabled 🔔');
-  else showToast('Notification permission denied');
+if (!('Notification' in window)) { showToast('Notifications not supported in this browser'); return; }
+const result = await Notification.requestPermission();
+notifPermission = result;
+renderNotifBanner();
+if (result === 'granted') showToast('Notifications enabled 🔔');
+else showToast('Notification permission denied');
 }
 function renderNotifBanner() {
-  const area = document.getElementById('notif-banner-area');
-  if (!area) return;
-  if (!('Notification' in window)) return;
-  if (Notification.permission === 'granted') {
-    area.innerHTML = '<div style="font-size:12px;color:var(--green);background:var(--green-light);padding:9px 14px;border-radius:10px;margin-bottom:14px;">🔔 Notifications enabled — reminders will fire on time</div>';
-  } else if (Notification.permission === 'denied') {
-    area.innerHTML = '<div class="notif-banner">🔕 Notifications blocked. Enable in iPhone Settings → Safari → Notifications.<br><span style="font-size:11px;margin-top:4px;display:block;">Reminders will still show inside the app.</span></div>';
-  } else {
-    area.innerHTML = `<div class="notif-banner">🔔 Enable notifications for on-time reminders <button onclick="requestNotifPermission()">Allow</button></div>`;
-  }
+const area = document.getElementById('notif-banner-area');
+if (!area) return;
+if (!('Notification' in window)) return;
+if (Notification.permission === 'granted') { area.innerHTML = '<div style="font-size:12px;color:var(--green);background:var(--green-light);padding:9px 14px;border-radius:10px;margin-bottom:14px;">🔔 Notifications enabled — reminders will fire on time</div>';
+} else if (Notification.permission === 'denied') { area.innerHTML = '<div class="notif-banner">🔕 Notifications blocked. Enable in iPhone Settings → Safari → Notifications.<br><span style="font-size:11px;margin-top:4px;display:block;">Reminders will still show inside the app.</span></div>';
+} else { area.innerHTML = `<div class="notif-banner">🔔 Enable notifications for on-time reminders <button onclick="requestNotifPermission()">Allow</button></div>`;
+}
 }
 function scheduleNotification(reminder) {
-  if (!('Notification' in window) || Notification.permission !== 'granted') return;
-  if (!reminder.datetime) return;
-  const fireAt = new Date(reminder.datetime).getTime();
-  const now = Date.now();
-  const delay = fireAt - now;
-  if (delay <= 0) return;
-  if (scheduledNotifs[reminder.id]) clearTimeout(scheduledNotifs[reminder.id]);
-  scheduledNotifs[reminder.id] = setTimeout(() => {
-    if (!reminder.done) {
-      new Notification('⏰ ' + reminder.title, {
-        body: reminder.note || 'Voyage Travel Reminder',
-        icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">✈️</text></svg>'
-      });
-    }
-  }, delay);
+if (!('Notification' in window) || Notification.permission !== 'granted') return;
+if (!reminder.datetime) return;
+const fireAt = new Date(reminder.datetime).getTime();
+const now = Date.now();
+const delay = fireAt - now;
+if (delay <= 0) return;
+if (scheduledNotifs[reminder.id]) clearTimeout(scheduledNotifs[reminder.id]);
+scheduledNotifs[reminder.id] = setTimeout(() => { if (!reminder.done) { new Notification('⏰ ' + reminder.title, { body: reminder.note || 'Voyage Travel Reminder', icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">✈️</text></svg>' }); }
+}, delay);
 }
 function rescheduleAll() {
-  (state.reminders || []).forEach(r => { if (!r.done) scheduleNotification(r); });
+(state.reminders || []).forEach(r => { if (!r.done) scheduleNotification(r); });
 }
 function filterReminders(f, el) {
-  activeReminderFilter = f;
-  document.querySelectorAll('#reminder-filter-tabs .chip').forEach(c => c.classList.remove('active'));
-  el.classList.add('active');
-  renderReminders();
+activeReminderFilter = f;
+document.querySelectorAll('#reminder-filter-tabs .chip').forEach(c => c.classList.remove('active'));
+el.classList.add('active');
+renderReminders();
 }
 function getDueLabel(datetime, done) {
-  if (done) return '<span class="reminder-due done-badge">✅ Completed</span>';
-  if (!datetime) return '';
-  const due = new Date(datetime);
-  const now = new Date();
-  const diffMs = due - now;
-  const diffDays = Math.ceil(diffMs / (1000*60*60*24));
-  const timeStr = due.toLocaleString('en-IN', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
-  if (diffMs < 0) return `<span class="reminder-due overdue">⚠️ Overdue · ${timeStr}</span>`;
-  if (diffDays === 0) return `<span class="reminder-due today">🔥 Today · ${timeStr}</span>`;
-  if (diffDays === 1) return `<span class="reminder-due today">Tomorrow · ${timeStr}</span>`;
-  return `<span class="reminder-due upcoming">📅 ${timeStr}</span>`;
+if (done) return '<span class="reminder-due done-badge">✅ Completed</span>';
+if (!datetime) return '';
+const due = new Date(datetime);
+const now = new Date();
+const diffMs = due - now;
+const diffDays = Math.ceil(diffMs / (1000*60*60*24));
+const timeStr = due.toLocaleString('en-IN', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
+if (diffMs < 0) return `<span class="reminder-due overdue">⚠️ Overdue · ${timeStr}</span>`;
+if (diffDays === 0) return `<span class="reminder-due today">🔥 Today · ${timeStr}</span>`;
+if (diffDays === 1) return `<span class="reminder-due today">Tomorrow · ${timeStr}</span>`;
+return `<span class="reminder-due upcoming">📅 ${timeStr}</span>`;
 }
 const REM_CAT_ICONS = { '🚗 Transport':'🚗', '📋 Documents':'📋', '💳 Booking':'💳', '💊 Health':'💊', '🛍 Shopping':'🛍', '📞 Call':'📞', '📌 General':'📌' };
 const REM_CAT_COLORS = { '🚗 Transport':'cat-transport', '📋 Documents':'cat-other', '💳 Booking':'cat-hotel', '💊 Health':'cat-activity', '🛍 Shopping':'cat-shopping', '📞 Call':'cat-food', '📌 General':'cat-other' };
 function renderReminders() {
-  renderNotifBanner();
-  const container = document.getElementById('reminders-list');
-  if (!container) return;
-  let items = state.reminders || [];
-  // Sort: pending by date ASC, done at bottom
-  items = [...items].sort((a,b) => {
-    if (a.done && !b.done) return 1;
-    if (!a.done && b.done) return -1;
-    return (a.datetime||'').localeCompare(b.datetime||'');
-  });
-  if (activeReminderFilter === 'pending') items = items.filter(r => !r.done);
-  if (activeReminderFilter === 'done') items = items.filter(r => r.done);
-  if (!items.length) {
-    container.innerHTML = `<div class="empty-state"><div class="emoji">🔔</div><p>No reminders yet.<br>Tap + to add one</p></div>`;
-    return;
-  }
-  container.innerHTML = items.map(r => {
-    const iconClass = REM_CAT_COLORS[r.cat] || 'cat-other';
-    const icon = REM_CAT_ICONS[r.cat] || '📌';
-    const dueLabel = getDueLabel(r.datetime, r.done);
-    return `<div class="reminder-item ${r.done ? 'done' : ''}">
-      <div class="reminder-top">
-        <div class="reminder-icon ${iconClass}">${icon}</div>
-        <div class="reminder-body">
-          <div class="reminder-title">${r.title}</div>
-          ${r.note ? `<div class="reminder-meta">${r.note}</div>` : ''}
-        </div>
-      </div>
-      ${dueLabel ? `<div class="reminder-due-row">${dueLabel}</div>` : ''}
-      <div class="reminder-actions">
-        <button class="reminder-action-btn btn-tick ${r.done ? 'ticked' : ''}" onclick="toggleReminder('${r.id}')">${r.done ? '✓ Done' : '✓ Done'}</button>
-        <button class="reminder-action-btn btn-edit" onclick="openEditReminder('${r.id}')">✏️ Edit</button>
-        <button class="reminder-action-btn btn-del" onclick="delReminder('${r.id}')">🗑 Delete</button>
-      </div>
-    </div>`;
-  }).join('');
+renderNotifBanner();
+const container = document.getElementById('reminders-list');
+if (!container) return;
+let items = state.reminders || [];
+// Sort: pending by date ASC, done at bottom
+items = [...items].sort((a,b) => { if (a.done && !b.done) return 1; if (!a.done && b.done) return -1; return (a.datetime||'').localeCompare(b.datetime||'');
+});
+if (activeReminderFilter === 'pending') items = items.filter(r => !r.done);
+if (activeReminderFilter === 'done') items = items.filter(r => r.done);
+if (!items.length) { container.innerHTML = `<div class="empty-state"><div class="emoji">🔔</div><p>No reminders yet.<br>Tap + to add one</p></div>`; return;
+}
+container.innerHTML = items.map(r => { const iconClass = REM_CAT_COLORS[r.cat] || 'cat-other'; const icon = REM_CAT_ICONS[r.cat] || '📌'; const dueLabel = getDueLabel(r.datetime, r.done); return `<div class="reminder-item ${r.done ? 'done' : ''}"> <div class="reminder-top"> <div class="reminder-icon ${iconClass}">${icon}</div> <div class="reminder-body"> <div class="reminder-title">${r.title}</div> ${r.note ? `<div class="reminder-meta">${r.note}</div>` : ''} </div> </div> ${dueLabel ? `<div class="reminder-due-row">${dueLabel}</div>` : ''} <div class="reminder-actions"> <button class="reminder-action-btn btn-tick ${r.done ? 'ticked' : ''}" onclick="toggleReminder('${r.id}')">${r.done ? '✓ Done' : '✓ Done'}</button> <button class="reminder-action-btn btn-edit" onclick="openEditReminder('${r.id}')">✏️ Edit</button> <button class="reminder-action-btn btn-del" onclick="delReminder('${r.id}')">🗑 Delete</button> </div> </div>`;
+}).join('');
 }
 function saveReminder() {
-  const title = document.getElementById('inp-rem-title').value.trim();
-  if (!title) { showToast('Enter a reminder title'); return; }
-  const date = document.getElementById('inp-rem-date').value;
-  const time = document.getElementById('inp-rem-time').value;
-  const datetime = date ? (time ? `${date}T${time}` : `${date}T09:00`) : null;
-  const r = {
-    id: uid(), title,
-    note: document.getElementById('inp-rem-note').value.trim(),
-    cat: document.getElementById('inp-rem-cat').value,
-    datetime, done: false,
-    created: new Date().toISOString()
-  };
-  if (!state.reminders) state.reminders = [];
-  state.reminders.push(r);
-  save();
-  scheduleNotification(r);
-  renderReminders();
-  closeSheet('sheet-reminder');
-  showToast('Reminder set 🔔');
-  ['inp-rem-title','inp-rem-note','inp-rem-date','inp-rem-time'].forEach(id => document.getElementById(id).value = '');
+const title = document.getElementById('inp-rem-title').value.trim();
+if (!title) { showToast('Enter a reminder title'); return; }
+const date = document.getElementById('inp-rem-date').value;
+const time = document.getElementById('inp-rem-time').value;
+const datetime = date ? (time ? `${date}T${time}` : `${date}T09:00`) : null;
+const r = { id: uid(), title, note: document.getElementById('inp-rem-note').value.trim(), cat: document.getElementById('inp-rem-cat').value, datetime, done: false, created: new Date().toISOString()
+};
+if (!state.reminders) state.reminders = [];
+state.reminders.push(r);
+save();
+scheduleNotification(r);
+renderReminders();
+closeSheet('sheet-reminder');
+showToast('Reminder set 🔔');
+['inp-rem-title','inp-rem-note','inp-rem-date','inp-rem-time'].forEach(id => document.getElementById(id).value = '');
 }
 function toggleReminder(id) {
-  const r = state.reminders.find(x => x.id === id);
-  if (r) { r.done = !r.done; if (r.done && scheduledNotifs[id]) { clearTimeout(scheduledNotifs[id]); } }
-  save(); renderReminders();
+const r = state.reminders.find(x => x.id === id);
+if (r) { r.done = !r.done; if (r.done && scheduledNotifs[id]) { clearTimeout(scheduledNotifs[id]); } }
+save(); renderReminders();
 }
 function delReminder(id) {
-  if (scheduledNotifs[id]) clearTimeout(scheduledNotifs[id]);
-  const r = state.reminders.find(x => x.id === id);
-  if (r) {
-    if (!state.deletedReminders) state.deletedReminders = [];
-    state.deletedReminders.unshift({ ...r, deletedAt: new Date().toISOString() });
-    state.reminders = state.reminders.filter(x => x.id !== id);
-    save(); renderReminders();
-    showToast('Reminder deleted — tap 🗑 to restore');
-  }
+if (scheduledNotifs[id]) clearTimeout(scheduledNotifs[id]);
+const r = state.reminders.find(x => x.id === id);
+if (r) { if (!state.deletedReminders) state.deletedReminders = []; state.deletedReminders.unshift({ ...r, deletedAt: new Date().toISOString() }); state.reminders = state.reminders.filter(x => x.id !== id); save(); renderReminders(); showToast('Reminder deleted — tap 🗑 to restore');
+}
 }
 function renderReminderTrash() {
-  const list = document.getElementById('reminder-trash-list');
-  if (!list) return;
-  const items = state.deletedReminders || [];
-  if (!items.length) { list.innerHTML = '<div class="empty-state" style="padding:30px 0;"><div class="emoji">✨</div><p>Trash is empty</p></div>'; return; }
-  list.innerHTML = items.map(r => {
-    const deletedTime = new Date(r.deletedAt).toLocaleString('en-IN', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
-    const icon = REM_CAT_ICONS[r.cat] || '📌';
-    return `<div class="card" style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
-      <span style="font-size:22px;">${icon}</span>
-      <div style="flex:1;min-width:0;">
-        <div style="font-size:14px;font-weight:600;color:var(--slate);">${r.title}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px;">${r.cat}</div>
-        <div style="font-size:11px;color:var(--muted);">Deleted ${deletedTime}</div>
-      </div>
-      <button onclick="restoreReminder('${r.id}')" style="background:var(--green-light);color:var(--green);border:1.5px solid var(--green);border-radius:10px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;">↩ Restore</button>
-      <span onclick="permanentDeleteReminder('${r.id}')" style="color:var(--muted);cursor:pointer;font-size:18px;padding:4px;flex-shrink:0;">×</span>
-    </div>`;
-  }).join('');
+const list = document.getElementById('reminder-trash-list');
+if (!list) return;
+const items = state.deletedReminders || [];
+if (!items.length) { list.innerHTML = '<div class="empty-state" style="padding:30px 0;"><div class="emoji">✨</div><p>Trash is empty</p></div>'; return; }
+list.innerHTML = items.map(r => { const deletedTime = new Date(r.deletedAt).toLocaleString('en-IN', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }); const icon = REM_CAT_ICONS[r.cat] || '📌'; return `<div class="card" style="display:flex;align-items:center;gap:12px;margin-bottom:8px;"> <span style="font-size:22px;">${icon}</span> <div style="flex:1;min-width:0;"> <div style="font-size:14px;font-weight:600;color:var(--slate);">${r.title}</div> <div style="font-size:11px;color:var(--muted);margin-top:2px;">${r.cat}</div> <div style="font-size:11px;color:var(--muted);">Deleted ${deletedTime}</div> </div> <button onclick="restoreReminder('${r.id}')" style="background:var(--green-light);color:var(--green);border:1.5px solid var(--green);border-radius:10px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;">↩ Restore</button> <span onclick="permanentDeleteReminder('${r.id}')" style="color:var(--muted);cursor:pointer;font-size:18px;padding:4px;flex-shrink:0;">×</span> </div>`;
+}).join('');
 }
 function restoreReminder(id) {
-  const idx = (state.deletedReminders || []).findIndex(r => r.id === id);
-  if (idx === -1) return;
-  const { deletedAt, ...rem } = state.deletedReminders[idx];
-  rem.done = false;
-  if (!state.reminders) state.reminders = [];
-  state.reminders.push(rem);
-  state.deletedReminders.splice(idx, 1);
-  scheduleNotification(rem);
-  save(); renderReminders(); renderReminderTrash();
-  showToast('Reminder restored ✅');
+const idx = (state.deletedReminders || []).findIndex(r => r.id === id);
+if (idx === -1) return;
+const { deletedAt, ...rem } = state.deletedReminders[idx];
+rem.done = false;
+if (!state.reminders) state.reminders = [];
+state.reminders.push(rem);
+state.deletedReminders.splice(idx, 1);
+scheduleNotification(rem);
+save(); renderReminders(); renderReminderTrash();
+showToast('Reminder restored ✅');
 }
 function permanentDeleteReminder(id) {
-  state.deletedReminders = (state.deletedReminders || []).filter(r => r.id !== id);
-  save(); renderReminderTrash();
+state.deletedReminders = (state.deletedReminders || []).filter(r => r.id !== id);
+save(); renderReminderTrash();
 }
 function emptyReminderTrash() {
-  state.deletedReminders = [];
-  save(); renderReminderTrash();
-  showToast('Trash emptied');
+state.deletedReminders = [];
+save(); renderReminderTrash();
+showToast('Trash emptied');
 }
 function exportData() {
-  if (!state.trips.length) { showToast('No data to export yet'); return; }
-  const json = JSON.stringify(state, null, 2);
-  const blob = new Blob([json], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const now = new Date();
-  const dateStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `voyage-backup-${dateStr}.json`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-  markSaved();
-  showToast('Exported! Save to iCloud Drive ☁️');
+if (!state.trips.length) { showToast('No data to export yet'); return; }
+const json = JSON.stringify(state, null, 2);
+const blob = new Blob([json], { type: 'application/json' });
+const url = URL.createObjectURL(blob);
+const now = new Date();
+const dateStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+const a = document.createElement('a');
+a.href = url;
+a.download = `voyage-backup-${dateStr}.json`;
+document.body.appendChild(a);
+a.click();
+document.body.removeChild(a);
+URL.revokeObjectURL(url);
+markSaved();
+showToast('Exported! Save to iCloud Drive ☁️');
 }
 function importData(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    try {
-      const parsed = JSON.parse(e.target.result);
-      if (!parsed.trips || !Array.isArray(parsed.trips)) { showToast('Invalid backup file'); return; }
-      state = { ...state, ...parsed };
-      save();
-      renderAll();
-      showToast(`Restored ${parsed.trips.length} trip(s) ✅`);
-    } catch(err) {
-      showToast('Failed to read file');
-    }
-  };
-  reader.readAsText(file);
-  event.target.value = '';
+const file = event.target.files[0];
+if (!file) return;
+const reader = new FileReader();
+reader.onload = function(e) { try { const parsed = JSON.parse(e.target.result); if (!parsed.trips || !Array.isArray(parsed.trips)) { showToast('Invalid backup file'); return; } state = { ...state, ...parsed }; save(); renderAll(); showToast(`Restored ${parsed.trips.length} trip(s) ✅`); } catch(err) { showToast('Failed to read file'); }
+};
+reader.readAsText(file);
+event.target.value = '';
 }
 // ============= SHARE =============
 function renderDocs() {
-  const selEl = document.getElementById('sel-trip-docs');
-  const container = document.getElementById('docs-list');
-  if (!selEl || !container) return;
-  const trip = getActiveTrip('docs');
-  selEl.textContent = trip ? trip.dest : 'Select a trip';
-  if (!trip) { container.innerHTML = ''; return; }
-  const docs = state.documents[trip.id] || [];
-  if (!docs.length) { container.innerHTML = `<div style="color:var(--muted);font-size:13px;padding:8px 0;">No documents yet</div>`; return; }
-  const now = new Date();
-  container.innerHTML = docs.map(d => {
-    const expiry = d.expiry ? new Date(d.expiry+'T12:00') : null;
-    const expired = expiry && expiry < now;
-    const expiringSoon = expiry && !expired && (expiry - now) < 30*24*60*60*1000;
-    return `<div class="card" style="display:flex;gap:12px;align-items:flex-start;margin-bottom:8px;">
-      <div style="font-size:24px;width:36px;text-align:center;">${d.type.split(' ')[0]}</div>
-      <div style="flex:1;">
-        <div style="font-weight:600;font-size:14px;">${d.name}</div>
-        <div style="font-size:12px;color:var(--muted);">${d.type}</div>
-        ${d.number?`<div style="font-size:12px;font-weight:600;color:var(--slate);margin-top:2px;font-family:monospace;">${d.number}</div>`:''}
-        ${d.expiry?`<div style="font-size:11px;margin-top:3px;color:${expired?'var(--red)':expiringSoon?'var(--sand)':'var(--green)'};">
-          ${expired?'⚠️ Expired':'✓ Valid until'} ${fmt(d.expiry)}</div>`:''}
-        ${d.notes?`<div style="font-size:11px;color:var(--muted);margin-top:2px;">${d.notes}</div>`:''}
-      </div>
-      <span style="cursor:pointer;color:var(--sky);font-size:16px;" onclick="editDoc('${trip.id}','${d.id}')">✏️</span>
-    </div>`;
-  }).join('');
+const selEl = document.getElementById('sel-trip-docs');
+const container = document.getElementById('docs-list');
+if (!selEl || !container) return;
+const trip = getActiveTrip('docs');
+selEl.textContent = trip ? trip.dest : 'Select a trip';
+if (!trip) { container.innerHTML = ''; return; }
+const docs = state.documents[trip.id] || [];
+if (!docs.length) { container.innerHTML = `<div style="color:var(--muted);font-size:13px;padding:8px 0;">No documents yet</div>`; return; }
+const now = new Date();
+container.innerHTML = docs.map(d => { const expiry = d.expiry ? new Date(d.expiry+'T12:00') : null; const expired = expiry && expiry < now; const expiringSoon = expiry && !expired && (expiry - now) < 30*24*60*60*1000; return `<div class="card" style="display:flex;gap:12px;align-items:flex-start;margin-bottom:8px;"> <div style="font-size:24px;width:36px;text-align:center;">${d.type.split(' ')[0]}</div> <div style="flex:1;"> <div style="font-weight:600;font-size:14px;">${d.name}</div> <div style="font-size:12px;color:var(--muted);">${d.type}</div> ${d.number?`<div style="font-size:12px;font-weight:600;color:var(--slate);margin-top:2px;font-family:monospace;">${d.number}</div>`:''} ${d.expiry?`<div style="font-size:11px;margin-top:3px;color:${expired?'var(--red)':expiringSoon?'var(--sand)':'var(--green)'};"> ${expired?'⚠️ Expired':'✓ Valid until'} ${fmt(d.expiry)}</div>`:''} ${d.notes?`<div style="font-size:11px;color:var(--muted);margin-top:2px;">${d.notes}</div>`:''} </div> <span style="cursor:pointer;color:var(--sky);font-size:16px;" onclick="editDoc('${trip.id}','${d.id}')">✏️</span> </div>`;
+}).join('');
 }
 function saveDoc() {
-  const trip = getActiveTrip('docs');
-  if (!trip) { showToast('Select a trip first'); return; }
-  const name = document.getElementById('inp-doc-name').value.trim();
-  if (!name) { showToast('Enter document name'); return; }
-  if (!state.documents[trip.id]) state.documents[trip.id] = [];
-  const editId = document.getElementById('edit-doc-id').value;
-  const doc = { id: editId||uid(), name, type: document.getElementById('inp-doc-type').value, number: document.getElementById('inp-doc-number').value.trim(), expiry: document.getElementById('inp-doc-expiry').value, notes: document.getElementById('inp-doc-notes').value.trim() };
-  if (editId) {
-    const idx = state.documents[trip.id].findIndex(d=>d.id===editId);
-    if (idx>-1) state.documents[trip.id][idx] = doc;
-  } else {
-    state.documents[trip.id].push(doc);
-  }
-  save(); renderDocs(); closeSheet('sheet-add-doc');
-  showToast('Document saved ✅');
-  ['inp-doc-name','inp-doc-number','inp-doc-expiry','inp-doc-notes'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
-  document.getElementById('edit-doc-id').value = '';
-  document.getElementById('doc-delete-btn').style.display = 'none';
+const trip = getActiveTrip('docs');
+if (!trip) { showToast('Select a trip first'); return; }
+const name = document.getElementById('inp-doc-name').value.trim();
+if (!name) { showToast('Enter document name'); return; }
+if (!state.documents[trip.id]) state.documents[trip.id] = [];
+const editId = document.getElementById('edit-doc-id').value;
+const doc = { id: editId||uid(), name, type: document.getElementById('inp-doc-type').value, number: document.getElementById('inp-doc-number').value.trim(), expiry: document.getElementById('inp-doc-expiry').value, notes: document.getElementById('inp-doc-notes').value.trim() };
+if (editId) { const idx = state.documents[trip.id].findIndex(d=>d.id===editId); if (idx>-1) state.documents[trip.id][idx] = doc;
+} else { state.documents[trip.id].push(doc);
+}
+save(); renderDocs(); closeSheet('sheet-add-doc');
+showToast('Document saved ✅');
+['inp-doc-name','inp-doc-number','inp-doc-expiry','inp-doc-notes'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+document.getElementById('edit-doc-id').value = '';
+document.getElementById('doc-delete-btn').style.display = 'none';
 }
 function editDoc(tripId, docId) {
-  const doc = (state.documents[tripId]||[]).find(d=>d.id===docId);
-  if (!doc) return;
-  document.getElementById('edit-doc-id').value = docId;
-  document.getElementById('inp-doc-name').value = doc.name;
-  document.getElementById('inp-doc-type').value = doc.type;
-  document.getElementById('inp-doc-number').value = doc.number||'';
-  document.getElementById('inp-doc-expiry').value = doc.expiry||'';
-  document.getElementById('inp-doc-notes').value = doc.notes||'';
-  document.getElementById('doc-delete-btn').style.display = 'block';
-  openSheet('sheet-add-doc');
+const doc = (state.documents[tripId]||[]).find(d=>d.id===docId);
+if (!doc) return;
+document.getElementById('edit-doc-id').value = docId;
+document.getElementById('inp-doc-name').value = doc.name;
+document.getElementById('inp-doc-type').value = doc.type;
+document.getElementById('inp-doc-number').value = doc.number||'';
+document.getElementById('inp-doc-expiry').value = doc.expiry||'';
+document.getElementById('inp-doc-notes').value = doc.notes||'';
+document.getElementById('doc-delete-btn').style.display = 'block';
+openSheet('sheet-add-doc');
 }
 function deleteDoc() {
-  const trip = getActiveTrip('docs');
-  const id = document.getElementById('edit-doc-id').value;
-  if (!trip||!id) return;
-  state.documents[trip.id] = (state.documents[trip.id]||[]).filter(d=>d.id!==id);
-  save(); renderDocs(); closeSheet('sheet-add-doc');
-  showToast('Document deleted');
+const trip = getActiveTrip('docs');
+const id = document.getElementById('edit-doc-id').value;
+if (!trip||!id) return;
+state.documents[trip.id] = (state.documents[trip.id]||[]).filter(d=>d.id!==id);
+save(); renderDocs(); closeSheet('sheet-add-doc');
+showToast('Document deleted');
 }
 // ============= AIRPORT LOUNGE TRACKER =============
 // Toggle anniversary date field visibility
 document.addEventListener('change', e => {
-  if (e.target.id === 'inp-prog-cycle') {
-    document.getElementById('prog-anniv-group').style.display = e.target.value === 'anniversary' ? 'block' : 'none';
-    renderProgLimitFields(e.target.value);
-  }
+if (e.target.id === 'inp-prog-cycle') { document.getElementById('prog-anniv-group').style.display = e.target.value === 'anniversary' ? 'block' : 'none'; renderProgLimitFields(e.target.value);
+}
 });
 function getCycleWindow(program) {
-  // Returns {start, end} Date objects for the CURRENT active cycle of this program
-  const now = new Date();
-  if (program.cycle === 'calendar') {
-    return { start: new Date(now.getFullYear(),0,1), end: new Date(now.getFullYear(),11,31,23,59,59) };
-  }
-  if (program.cycle === 'quarter') {
-    const q = Math.floor(now.getMonth()/3);
-    return { start: new Date(now.getFullYear(), q*3, 1), end: new Date(now.getFullYear(), q*3+3, 0, 23,59,59) };
-  }
-  if (program.cycle === 'anniversary' && program.annivDate) {
-    const anniv = new Date(program.annivDate + 'T00:00');
-    let cycleStart = new Date(now.getFullYear(), anniv.getMonth(), anniv.getDate());
-    if (cycleStart > now) cycleStart.setFullYear(cycleStart.getFullYear()-1);
-    const cycleEnd = new Date(cycleStart);
-    cycleEnd.setFullYear(cycleEnd.getFullYear()+1);
-    cycleEnd.setDate(cycleEnd.getDate()-1);
-    return { start: cycleStart, end: cycleEnd };
-  }
-  // never / lifetime — window covers everything
-  return { start: new Date(2000,0,1), end: new Date(2100,0,1) };
+// Returns {start, end} Date objects for the CURRENT active cycle of this program
+const now = new Date();
+if (program.cycle === 'calendar') { return { start: new Date(now.getFullYear(),0,1), end: new Date(now.getFullYear(),11,31,23,59,59) };
+}
+if (program.cycle === 'quarter') { const q = Math.floor(now.getMonth()/3); return { start: new Date(now.getFullYear(), q*3, 1), end: new Date(now.getFullYear(), q*3+3, 0, 23,59,59) };
+}
+if (program.cycle === 'anniversary' && program.annivDate) { const anniv = new Date(program.annivDate + 'T00:00'); let cycleStart = new Date(now.getFullYear(), anniv.getMonth(), anniv.getDate()); if (cycleStart > now) cycleStart.setFullYear(cycleStart.getFullYear()-1); const cycleEnd = new Date(cycleStart); cycleEnd.setFullYear(cycleEnd.getFullYear()+1); cycleEnd.setDate(cycleEnd.getDate()-1); return { start: cycleStart, end: cycleEnd };
+}
+// never / lifetime — window covers everything
+return { start: new Date(2000,0,1), end: new Date(2100,0,1) };
 }
 function getCurrentQuarter() {
-  const m = new Date().getMonth();
-  if(m<=2)return'q1'; if(m<=5)return'q2'; if(m<=8)return'q3'; return'q4';
+const m = new Date().getMonth();
+if(m<=2)return'q1'; if(m<=5)return'q2'; if(m<=8)return'q3'; return'q4';
 }
 function getVisitLimitForNow(program) {
-  const limits = program.limits || { main: program.limit || 0 };
-  if (program.cycle === 'quarter') {
-    const q = getCurrentQuarter();
-    return limits[q] || limits.q1 || 0;
-  }
-  return limits.main || program.limit || 0;
+const limits = program.limits || { main: program.limit || 0 };
+if (program.cycle === 'quarter') { const q = getCurrentQuarter(); return limits[q] || limits.q1 || 0;
+}
+return limits.main || program.limit || 0;
 }
 function getUsedVisits(program) {
-  const { start, end } = getCycleWindow(program);
-  return (program.visits||[]).filter(v => {
-    const d = new Date(v.date + 'T12:00');
-    return d >= start && d <= end;
-  }).length;
+const { start, end } = getCycleWindow(program);
+return (program.visits||[]).filter(v => { const d = new Date(v.date + 'T12:00'); return d >= start && d <= end;
+}).length;
 }
 function getVisitsAllPeriods(program) {
-  // Returns array of {label, used, limit} for each period in current cycle
-  const limits = program.limits || { main: program.limit || 0 };
-  if (program.cycle === 'quarter') {
-    const now = new Date();
-    const yr = now.getFullYear();
-    const quarters = [
-      { key:'q1', label:'Q1 Jan–Mar', start:new Date(yr,0,1), end:new Date(yr,2,31,23,59,59) },
-      { key:'q2', label:'Q2 Apr–Jun', start:new Date(yr,3,1), end:new Date(yr,5,30,23,59,59) },
-      { key:'q3', label:'Q3 Jul–Sep', start:new Date(yr,6,1), end:new Date(yr,8,30,23,59,59) },
-      { key:'q4', label:'Q4 Oct–Dec', start:new Date(yr,9,1), end:new Date(yr,11,31,23,59,59) },
-    ];
-    return quarters.filter(q=>limits[q.key]).map(q => {
-      const used = (program.visits||[]).filter(v => { const d=new Date(v.date+'T12:00'); return d>=q.start&&d<=q.end; }).length;
-      return { label:q.label, used, limit:limits[q.key], isCurrent: getCurrentQuarter()===q.key };
-    });
-  }
-  const used = getUsedVisits(program);
-  const lim = limits.main || program.limit || 0;
-  const cycleLabel = program.cycle==='calendar'?new Date().getFullYear()+' (Full Year)':program.cycle==='never'?'Lifetime':'Current Anniversary Year';
-  return [{ label:cycleLabel, used, limit:lim, isCurrent:true }];
+// Returns array of {label, used, limit} for each period in current cycle
+const limits = program.limits || { main: program.limit || 0 };
+if (program.cycle === 'quarter') { const now = new Date(); const yr = now.getFullYear(); const quarters = [ { key:'q1', label:'Q1 Jan–Mar', start:new Date(yr,0,1), end:new Date(yr,2,31,23,59,59) }, { key:'q2', label:'Q2 Apr–Jun', start:new Date(yr,3,1), end:new Date(yr,5,30,23,59,59) }, { key:'q3', label:'Q3 Jul–Sep', start:new Date(yr,6,1), end:new Date(yr,8,30,23,59,59) }, { key:'q4', label:'Q4 Oct–Dec', start:new Date(yr,9,1), end:new Date(yr,11,31,23,59,59) }, ]; return quarters.filter(q=>limits[q.key]).map(q => { const used = (program.visits||[]).filter(v => { const d=new Date(v.date+'T12:00'); return d>=q.start&&d<=q.end; }).length; return { label:q.label, used, limit:limits[q.key], isCurrent: getCurrentQuarter()===q.key }; });
+}
+const used = getUsedVisits(program);
+const lim = limits.main || program.limit || 0;
+const cycleLabel = program.cycle==='calendar'?new Date().getFullYear()+' (Full Year)':program.cycle==='never'?'Lifetime':'Current Anniversary Year';
+return [{ label:cycleLabel, used, limit:lim, isCurrent:true }];
 }
 let loungeFilter = 'all';
 function filterLounge(f, el) {
-  loungeFilter = f;
-  document.querySelectorAll('#lounge-filter-tabs .chip').forEach(c=>c.classList.remove('active'));
-  el.classList.add('active');
-  renderLoungeCards();
+loungeFilter = f;
+document.querySelectorAll('#lounge-filter-tabs .chip').forEach(c=>c.classList.remove('active'));
+el.classList.add('active');
+renderLoungeCards();
 }
 function renderLoungeSummary() {
-  const summaryEl = document.getElementById('lounge-summary');
-  if (!summaryEl) return;
-  const cards = state.loungeCards || [];
-  let allPrograms = [];
-  cards.forEach(c => (c.programs||[]).forEach(p => {
-    const used = getUsedVisits(p);
-    const lim = getVisitLimitForNow(p);
-    const remaining = Math.max(0, lim - used);
-    allPrograms.push({ cardName: c.name, digits: c.digits, progName: p.name, remaining, limit: lim });
-  }));
-  if (!allPrograms.length) { summaryEl.innerHTML = ''; return; }
-  const totalRemaining = allPrograms.reduce((s,p)=>s+p.remaining,0);
-  const totalLeft = totalRemaining;
-  const usedUp = allPrograms.filter(p=>p.remaining===0).length;
-  const lowOnes = allPrograms.filter(p=>p.remaining>0 && p.remaining<=1).sort((a,b)=>a.remaining-b.remaining);
-  summaryEl.innerHTML = `
-    <div class="card" style="background:linear-gradient(135deg,#EBF4FF,#F0F8FF);color:var(--slate);border:1.5px solid #C8DEFF;margin-bottom:14px;">
-      <div style="display:flex;justify-content:space-around;text-align:center;margin-bottom:${lowOnes.length?'12px':'0'};">
-        <div><div style="font-size:22px;font-weight:800;color:var(--sky-dark);">${cards.length}</div><div style="font-size:10px;color:var(--muted);">Cards</div></div>
-        <div><div style="font-size:22px;font-weight:800;color:var(--green);">${totalRemaining}</div><div style="font-size:10px;color:var(--muted);">Visits Left</div></div>
-        <div><div style="font-size:22px;font-weight:800;color:${usedUp?'var(--red)':'var(--green)'};">${usedUp}</div><div style="font-size:10px;color:var(--muted);">Used Up</div></div>
-      </div>
-      ${lowOnes.length ? `<div style="border-top:1px solid #C8DEFF;padding-top:10px;">
-        <div style="font-size:11px;font-weight:700;color:var(--red);margin-bottom:6px;">⚠️ RUNNING LOW</div>
-        ${lowOnes.slice(0,4).map(p=>`<div style="font-size:12px;display:flex;justify-content:space-between;padding:3px 0;color:var(--mid);"><span>${p.cardName} (•${p.digits}) — ${p.progName}</span><span style="font-weight:700;color:var(--red);">${p.remaining} left</span></div>`).join('')}
-      </div>` : ''}
-    </div>`;
+const summaryEl = document.getElementById('lounge-summary');
+if (!summaryEl) return;
+const cards = state.loungeCards || [];
+let allPrograms = [];
+cards.forEach(c => (c.programs||[]).forEach(p => { const used = getUsedVisits(p); const lim = getVisitLimitForNow(p); const remaining = Math.max(0, lim - used); allPrograms.push({ cardName: c.name, digits: c.digits, progName: p.name, remaining, limit: lim });
+}));
+if (!allPrograms.length) { summaryEl.innerHTML = ''; return; }
+const totalRemaining = allPrograms.reduce((s,p)=>s+p.remaining,0);
+const totalLeft = totalRemaining;
+const usedUp = allPrograms.filter(p=>p.remaining===0).length;
+const lowOnes = allPrograms.filter(p=>p.remaining>0 && p.remaining<=1).sort((a,b)=>a.remaining-b.remaining);
+summaryEl.innerHTML = ` <div class="card" style="background:linear-gradient(135deg,#EBF4FF,#F0F8FF);color:var(--slate);border:1.5px solid #C8DEFF;margin-bottom:14px;"> <div style="display:flex;justify-content:space-around;text-align:center;margin-bottom:${lowOnes.length?'12px':'0'};"> <div><div style="font-size:22px;font-weight:800;color:var(--sky-dark);">${cards.length}</div><div style="font-size:10px;color:var(--muted);">Cards</div></div> <div><div style="font-size:22px;font-weight:800;color:var(--green);">${totalRemaining}</div><div style="font-size:10px;color:var(--muted);">Visits Left</div></div> <div><div style="font-size:22px;font-weight:800;color:${usedUp?'var(--red)':'var(--green)'};">${usedUp}</div><div style="font-size:10px;color:var(--muted);">Used Up</div></div> </div> ${lowOnes.length ? `<div style="border-top:1px solid #C8DEFF;padding-top:10px;"> <div style="font-size:11px;font-weight:700;color:var(--red);margin-bottom:6px;">⚠️ RUNNING LOW</div> ${lowOnes.slice(0,4).map(p=>`<div style="font-size:12px;display:flex;justify-content:space-between;padding:3px 0;color:var(--mid);"><span>${p.cardName} (•${p.digits}) — ${p.progName}</span><span style="font-weight:700;color:var(--red);">${p.remaining} left</span></div>`).join('')} </div>` : ''} </div>`;
 }
 function renderLoungeCards() {
-  renderLoungeSummary();
-  const container = document.getElementById('lounge-cards-list');
-  if (!container) return;
-  let cards = state.loungeCards || [];
-  if (!cards.length) {
-    container.innerHTML = `<div class="empty-state" style="padding:20px 0;"><div class="emoji">🛋</div><p>No cards added yet.<br>Tap + Add Card to start tracking lounge visits</p></div>`;
-    return;
-  }
-  const q = (document.getElementById('lounge-search')?.value || '').trim().toLowerCase();
-  // Build filtered/searched view
-  let visibleCards = cards.map(c => {
-    let programs = c.programs || [];
-    if (q) {
-      const cardMatches = c.name.toLowerCase().includes(q) || (c.bank||'').toLowerCase().includes(q) || (c.digits||'').includes(q);
-      if (!cardMatches) programs = programs.filter(p => p.name.toLowerCase().includes(q));
-    }
-    return { card: c, programs };
-  });
-  if (q) visibleCards = visibleCards.filter(({card,programs}) => programs.length || card.name.toLowerCase().includes(q) || (card.bank||'').toLowerCase().includes(q) || (card.digits||'').includes(q));
-  if (loungeFilter !== 'all') {
-    visibleCards = visibleCards.map(({card,programs}) => {
-      const filtered = programs.filter(p => {
-        const used = getUsedVisits(p);
-        const remaining = Math.max(0, getVisitLimitForNow(p) - used);
-        return loungeFilter === 'available' ? remaining > 1 : remaining <= 1;
-      });
-      return { card, programs: filtered };
-    }).filter(({programs}) => programs.length > 0);
-  }
-  if (!visibleCards.length) {
-    container.innerHTML = `<div class="empty-state" style="padding:20px 0;"><div class="emoji">🔍</div><p>No cards match</p></div>`;
-    return;
-  }
-  container.innerHTML = visibleCards.map(({card:c, programs}) => {
-    return `<div class="lounge-card">
-      <div class="lounge-card-header">
-        <div>
-          <div class="lounge-card-name">${c.name}</div>
-          <div class="lounge-card-digits">•••• ${c.digits||'????'}</div>
-          ${c.bank?`<div class="lounge-card-bank">${c.bank}</div>`:''}
-        </div>
-        <span style="cursor:pointer;font-size:16px;opacity:0.7;" onclick="editCard('${c.id}')">✏️</span>
-      </div>
-      ${programs.map(p => {
-        const periods = getVisitsAllPeriods(p);
-        const curPeriod = periods.find(x=>x.isCurrent) || periods[0];
-        const totalUsed = getUsedVisits(p);
-        const curLimit = getVisitLimitForNow(p);
-        const curUsed = curPeriod?.used || 0;
-        const remaining = Math.max(0, curLimit - curUsed);
-        const pct = curLimit ? Math.min(100,(curUsed/curLimit)*100) : 0;
-        const low = remaining <= 1;
-        const { end } = getCycleWindow(p);
-        const resetLabel = p.cycle==='never'?'No reset':`Resets ${end.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}`;
-        const periodsHtml = periods.length > 1 ? periods.map(q=>`
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.08);">
-            <span style="font-size:10px;color:var(--muted);">${q.label}${q.isCurrent?' ◀ now':''}</span>
-            <span style="font-size:11px;font-weight:700;color:${Math.max(0,q.limit-q.used)<=1?'var(--red)':'var(--green)'};">${q.used}/${q.limit} · ${Math.max(0,q.limit-q.used)} left</span>
-          </div>`).join('') : '';
-        return `<div class="lounge-prog-row">
-          <div class="lounge-prog-header">
-            <div class="lounge-prog-name">${p.name}</div>
-            <div style="display:flex;align-items:center;gap:6px;">
-              <div class="lounge-prog-remaining ${low?'low':'ok'}">${remaining} left now</div>
-              <span style="font-size:13px;cursor:pointer;opacity:.7;" onclick="editProgram('${c.id}','${p.id}')">✏️</span>
-            </div>
-          </div>
-          <div class="lounge-prog-bar"><div class="lounge-prog-fill" style="width:${pct}%;background:${low?'#FF8A8A':'#8AFFB0'};"></div></div>
-          <div class="lounge-prog-meta">
-            <span>${curUsed}/${curLimit} used this period · ${CYCLE_LABELS[p.cycle]}</span>
-            <span>${resetLabel}</span>
-          </div>
-          ${periodsHtml ? `<div style="margin-top:8px;">${periodsHtml}</div>` : ''}
-          <div class="lounge-visit-chip" onclick="openLogVisit('${c.id}','${p.id}')">+ Log Visit / View History</div>
-        </div>`;
-      }).join('')}
-      <div class="lounge-card-actions">
-        <button onclick="openAddProgram('${c.id}')">+ Add Lounge Program</button>
-      </div>
-    </div>`;
-  }).join('');
+renderLoungeSummary();
+const container = document.getElementById('lounge-cards-list');
+if (!container) return;
+let cards = state.loungeCards || [];
+if (!cards.length) { container.innerHTML = `<div class="empty-state" style="padding:20px 0;"><div class="emoji">🛋</div><p>No cards added yet.<br>Tap + Add Card to start tracking lounge visits</p></div>`; return;
+}
+const q = (document.getElementById('lounge-search')?.value || '').trim().toLowerCase();
+// Build filtered/searched view
+let visibleCards = cards.map(c => { let programs = c.programs || []; if (q) { const cardMatches = c.name.toLowerCase().includes(q) || (c.bank||'').toLowerCase().includes(q) || (c.digits||'').includes(q); if (!cardMatches) programs = programs.filter(p => p.name.toLowerCase().includes(q)); } return { card: c, programs };
+});
+if (q) visibleCards = visibleCards.filter(({card,programs}) => programs.length || card.name.toLowerCase().includes(q) || (card.bank||'').toLowerCase().includes(q) || (card.digits||'').includes(q));
+if (loungeFilter !== 'all') { visibleCards = visibleCards.map(({card,programs}) => { const filtered = programs.filter(p => { const used = getUsedVisits(p); const remaining = Math.max(0, getVisitLimitForNow(p) - used); return loungeFilter === 'available' ? remaining > 1 : remaining <= 1; }); return { card, programs: filtered }; }).filter(({programs}) => programs.length > 0);
+}
+if (!visibleCards.length) { container.innerHTML = `<div class="empty-state" style="padding:20px 0;"><div class="emoji">🔍</div><p>No cards match</p></div>`; return;
+}
+container.innerHTML = visibleCards.map(({card:c, programs}) => { return `<div class="lounge-card"> <div class="lounge-card-header"> <div> <div class="lounge-card-name">${c.name}</div> <div class="lounge-card-digits">•••• ${c.digits||'????'}</div> ${c.bank?`<div class="lounge-card-bank">${c.bank}</div>`:''} </div> <span style="cursor:pointer;font-size:16px;opacity:0.7;" onclick="editCard('${c.id}')">✏️</span> </div> ${programs.map(p => { const periods = getVisitsAllPeriods(p); const curPeriod = periods.find(x=>x.isCurrent) || periods[0]; const totalUsed = getUsedVisits(p); const curLimit = getVisitLimitForNow(p); const curUsed = curPeriod?.used || 0; const remaining = Math.max(0, curLimit - curUsed); const pct = curLimit ? Math.min(100,(curUsed/curLimit)*100) : 0; const low = remaining <= 1; const { end } = getCycleWindow(p); const resetLabel = p.cycle==='never'?'No reset':`Resets ${end.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}`; const periodsHtml = periods.length > 1 ? periods.map(q=>` <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.08);"> <span style="font-size:10px;color:var(--muted);">${q.label}${q.isCurrent?' ◀ now':''}</span> <span style="font-size:11px;font-weight:700;color:${Math.max(0,q.limit-q.used)<=1?'var(--red)':'var(--green)'};">${q.used}/${q.limit} · ${Math.max(0,q.limit-q.used)} left</span> </div>`).join('') : ''; return `<div class="lounge-prog-row"> <div class="lounge-prog-header"> <div class="lounge-prog-name">${p.name}</div> <div style="display:flex;align-items:center;gap:6px;"> <div class="lounge-prog-remaining ${low?'low':'ok'}">${remaining} left now</div> <span style="font-size:13px;cursor:pointer;opacity:.7;" onclick="editProgram('${c.id}','${p.id}')">✏️</span> </div> </div> <div class="lounge-prog-bar"><div class="lounge-prog-fill" style="width:${pct}%;background:${low?'#FF8A8A':'#8AFFB0'};"></div></div> <div class="lounge-prog-meta"> <span>${curUsed}/${curLimit} used this period · ${CYCLE_LABELS[p.cycle]}</span> <span>${resetLabel}</span> </div> ${periodsHtml ? `<div style="margin-top:8px;">${periodsHtml}</div>` : ''} <div class="lounge-visit-chip" onclick="openLogVisit('${c.id}','${p.id}')">+ Log Visit / View History</div> </div>`; }).join('')} <div class="lounge-card-actions"> <button onclick="openAddProgram('${c.id}')">+ Add Lounge Program</button> </div> </div>`;
+}).join('');
 }
 function saveCard() {
-  const name = document.getElementById('inp-card-name').value.trim();
-  if (!name) { showToast('Enter card name'); return; }
-  const editId = document.getElementById('edit-card-id').value;
-  const cardData = {
-    name,
-    bank: document.getElementById('inp-card-bank').value.trim(),
-    digits: document.getElementById('inp-card-digits').value.trim().slice(0,4)
-  };
-  if (editId) {
-    const card = state.loungeCards.find(c=>c.id===editId);
-    if (card) Object.assign(card, cardData);
-  } else {
-    state.loungeCards.push({ id: uid(), ...cardData, programs: [] });
-  }
-  save(); renderLoungeCards(); closeSheet('sheet-add-card');
-  showToast('Card saved ✅');
-  ['inp-card-name','inp-card-bank','inp-card-digits'].forEach(id => document.getElementById(id).value='');
-  document.getElementById('edit-card-id').value = '';
-  document.getElementById('card-delete-btn').style.display = 'none';
+const name = document.getElementById('inp-card-name').value.trim();
+if (!name) { showToast('Enter card name'); return; }
+const editId = document.getElementById('edit-card-id').value;
+const cardData = { name, bank: document.getElementById('inp-card-bank').value.trim(), digits: document.getElementById('inp-card-digits').value.trim().slice(0,4)
+};
+if (editId) { const card = state.loungeCards.find(c=>c.id===editId); if (card) Object.assign(card, cardData);
+} else { state.loungeCards.push({ id: uid(), ...cardData, programs: [] });
+}
+save(); renderLoungeCards(); closeSheet('sheet-add-card');
+showToast('Card saved ✅');
+['inp-card-name','inp-card-bank','inp-card-digits'].forEach(id => document.getElementById(id).value='');
+document.getElementById('edit-card-id').value = '';
+document.getElementById('card-delete-btn').style.display = 'none';
 }
 function editCard(cardId) {
-  const card = state.loungeCards.find(c=>c.id===cardId);
-  if (!card) return;
-  document.getElementById('edit-card-id').value = cardId;
-  document.getElementById('inp-card-name').value = card.name;
-  document.getElementById('inp-card-bank').value = card.bank||'';
-  document.getElementById('inp-card-digits').value = card.digits||'';
-  document.getElementById('card-delete-btn').style.display = 'block';
-  openSheet('sheet-add-card');
+const card = state.loungeCards.find(c=>c.id===cardId);
+if (!card) return;
+document.getElementById('edit-card-id').value = cardId;
+document.getElementById('inp-card-name').value = card.name;
+document.getElementById('inp-card-bank').value = card.bank||'';
+document.getElementById('inp-card-digits').value = card.digits||'';
+document.getElementById('card-delete-btn').style.display = 'block';
+openSheet('sheet-add-card');
 }
 function deleteCard() {
-  const id = document.getElementById('edit-card-id').value;
-  if (!id) return;
-  state.loungeCards = state.loungeCards.filter(c=>c.id!==id);
-  save(); renderLoungeCards(); closeSheet('sheet-add-card');
-  showToast('Card deleted');
+const id = document.getElementById('edit-card-id').value;
+if (!id) return;
+state.loungeCards = state.loungeCards.filter(c=>c.id!==id);
+save(); renderLoungeCards(); closeSheet('sheet-add-card');
+showToast('Card deleted');
 }
 function renderProgLimitFields(cycle){const sec=document.getElementById('prog-limit-fields');if(!sec)return;if(cycle==='quarter'){sec.innerHTML=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;"><div><label class="form-label" style="font-size:11px;">Q1 (Jan–Mar)</label><input class="form-input" id="plim-q1" type="number" placeholder="2"/></div><div><label class="form-label" style="font-size:11px;">Q2 (Apr–Jun)</label><input class="form-input" id="plim-q2" type="number" placeholder="2"/></div><div><label class="form-label" style="font-size:11px;">Q3 (Jul–Sep)</label><input class="form-input" id="plim-q3" type="number" placeholder="2"/></div><div><label class="form-label" style="font-size:11px;">Q4 (Oct–Dec)</label><input class="form-input" id="plim-q4" type="number" placeholder="2"/></div></div>`;}else if(cycle==='calendar'||cycle==='anniversary'){sec.innerHTML=`<div><label class="form-label" style="font-size:11px;">Total visits per year</label><input class="form-input" id="plim-year" type="number" placeholder="8"/></div>`;}else{sec.innerHTML=`<div><label class="form-label" style="font-size:11px;">Lifetime visits</label><input class="form-input" id="plim-lifetime" type="number" placeholder="4"/></div>`;}}
 function fillProgLimits(cycle,limits){if(!limits)return;if(cycle==='quarter'){['q1','q2','q3','q4'].forEach(k=>{const el=document.getElementById('plim-'+k);if(el&&limits[k])el.value=limits[k];});}else{const el=document.getElementById('plim-year')||document.getElementById('plim-lifetime');if(el&&limits.main)el.value=limits.main;}}
 function getProgLimits(cycle){if(cycle==='quarter')return{q1:parseInt(document.getElementById('plim-q1')?.value)||0,q2:parseInt(document.getElementById('plim-q2')?.value)||0,q3:parseInt(document.getElementById('plim-q3')?.value)||0,q4:parseInt(document.getElementById('plim-q4')?.value)||0};return{main:parseInt(document.getElementById('plim-year')?.value||document.getElementById('plim-lifetime')?.value)||0};}
 function openAddProgram(cardId) {
-  document.getElementById('prog-card-id').value = cardId;
-  document.getElementById('edit-prog-id').value = '';
-  document.getElementById('inp-prog-name').value = '';
-  document.getElementById('inp-prog-cycle').value = 'calendar';
-  document.getElementById('inp-prog-anniv-date').value = '';
-  document.getElementById('prog-anniv-group').style.display = 'none';
-  document.getElementById('program-delete-btn').style.display = 'none';
-  document.getElementById('prog-sheet-title').textContent = 'Add Lounge Program';
-  renderProgLimitFields('calendar');
-  openSheet('sheet-add-program');
+document.getElementById('prog-card-id').value = cardId;
+document.getElementById('edit-prog-id').value = '';
+document.getElementById('inp-prog-name').value = '';
+document.getElementById('inp-prog-cycle').value = 'calendar';
+document.getElementById('inp-prog-anniv-date').value = '';
+document.getElementById('prog-anniv-group').style.display = 'none';
+document.getElementById('program-delete-btn').style.display = 'none';
+document.getElementById('prog-sheet-title').textContent = 'Add Lounge Program';
+renderProgLimitFields('calendar');
+openSheet('sheet-add-program');
 }
 function editProgram(cardId, progId) {
-  const card = state.loungeCards.find(c=>c.id===cardId);
-  const prog = card?.programs.find(p=>p.id===progId);
-  if (!prog) return;
-  document.getElementById('prog-card-id').value = cardId;
-  document.getElementById('edit-prog-id').value = progId;
-  document.getElementById('inp-prog-name').value = prog.name;
-  document.getElementById('inp-prog-cycle').value = prog.cycle;
-  document.getElementById('inp-prog-anniv-date').value = prog.annivDate||'';
-  document.getElementById('prog-anniv-group').style.display = prog.cycle==='anniversary'?'block':'none';
-  document.getElementById('program-delete-btn').style.display = 'block';
-  document.getElementById('prog-sheet-title').textContent = 'Edit Program';
-  renderProgLimitFields(prog.cycle);
-  fillProgLimits(prog.cycle, prog.limits);
-  openSheet('sheet-add-program');
+const card = state.loungeCards.find(c=>c.id===cardId);
+const prog = card?.programs.find(p=>p.id===progId);
+if (!prog) return;
+document.getElementById('prog-card-id').value = cardId;
+document.getElementById('edit-prog-id').value = progId;
+document.getElementById('inp-prog-name').value = prog.name;
+document.getElementById('inp-prog-cycle').value = prog.cycle;
+document.getElementById('inp-prog-anniv-date').value = prog.annivDate||'';
+document.getElementById('prog-anniv-group').style.display = prog.cycle==='anniversary'?'block':'none';
+document.getElementById('program-delete-btn').style.display = 'block';
+document.getElementById('prog-sheet-title').textContent = 'Edit Program';
+renderProgLimitFields(prog.cycle);
+fillProgLimits(prog.cycle, prog.limits);
+openSheet('sheet-add-program');
 }
 function saveProgram() {
-  const cardId = document.getElementById('prog-card-id').value;
-  const card = state.loungeCards.find(c=>c.id===cardId);
-  if (!card) { showToast('Card not found'); return; }
-  const name = document.getElementById('inp-prog-name').value.trim();
-  if (!name) { showToast('Enter program name'); return; }
-  const cycle = document.getElementById('inp-prog-cycle').value;
-  const limits = getProgLimits(cycle);
-  // Validate at least one limit set
-  const hasLimit = cycle==='quarter' ? (limits.q1||limits.q2||limits.q3||limits.q4) : limits.main;
-  if (!hasLimit) { showToast('Enter at least one visit limit'); return; }
-  const annivDate = document.getElementById('inp-prog-anniv-date').value;
-  const editId = document.getElementById('edit-prog-id').value;
-  if (!card.programs) card.programs = [];
-  if (editId) {
-    const prog = card.programs.find(p=>p.id===editId);
-    if (prog) { prog.name=name; prog.cycle=cycle; prog.limits=limits; prog.annivDate=annivDate; }
-  } else {
-    card.programs.push({ id:uid(), name, cycle, limits, annivDate, visits:[] });
-  }
-  save(); renderLoungeCards(); closeSheet('sheet-add-program');
-  showToast('Lounge program saved ✅');
+const cardId = document.getElementById('prog-card-id').value;
+const card = state.loungeCards.find(c=>c.id===cardId);
+if (!card) { showToast('Card not found'); return; }
+const name = document.getElementById('inp-prog-name').value.trim();
+if (!name) { showToast('Enter program name'); return; }
+const cycle = document.getElementById('inp-prog-cycle').value;
+const limits = getProgLimits(cycle);
+// Validate at least one limit set
+const hasLimit = cycle==='quarter' ? (limits.q1||limits.q2||limits.q3||limits.q4) : limits.main;
+if (!hasLimit) { showToast('Enter at least one visit limit'); return; }
+const annivDate = document.getElementById('inp-prog-anniv-date').value;
+const editId = document.getElementById('edit-prog-id').value;
+if (!card.programs) card.programs = [];
+if (editId) { const prog = card.programs.find(p=>p.id===editId); if (prog) { prog.name=name; prog.cycle=cycle; prog.limits=limits; prog.annivDate=annivDate; }
+} else { card.programs.push({ id:uid(), name, cycle, limits, annivDate, visits:[] });
+}
+save(); renderLoungeCards(); closeSheet('sheet-add-program');
+showToast('Lounge program saved ✅');
 }
 function deleteProgram() {
-  const cardId = document.getElementById('prog-card-id').value;
-  const progId = document.getElementById('edit-prog-id').value;
-  const card = state.loungeCards.find(c=>c.id===cardId);
-  if (card) card.programs = card.programs.filter(p=>p.id!==progId);
-  save(); renderLoungeCards(); closeSheet('sheet-add-program');
-  showToast('Program deleted');
+const cardId = document.getElementById('prog-card-id').value;
+const progId = document.getElementById('edit-prog-id').value;
+const card = state.loungeCards.find(c=>c.id===cardId);
+if (card) card.programs = card.programs.filter(p=>p.id!==progId);
+save(); renderLoungeCards(); closeSheet('sheet-add-program');
+showToast('Program deleted');
 }
 function openLogVisit(cardId, progId) {
-  const card = state.loungeCards.find(c=>c.id===cardId);
-  const prog = card?.programs.find(p=>p.id===progId);
-  if (!prog) return;
-  document.getElementById('visit-card-id').value = cardId;
-  document.getElementById('visit-prog-id').value = progId;
-  const used = getUsedVisits(prog);
-  const remaining = Math.max(0, getVisitLimitForNow(prog) - used);
-  document.getElementById('visit-prog-info').innerHTML = card.name+' — '+prog.name+'<br><span style="font-size:13px;color:var(--sky);font-weight:700;">'+remaining+' visits left this period ('+CYCLE_LABELS[prog.cycle]+')</span>';
-  document.getElementById('inp-visit-date').value = new Date().toISOString().slice(0,10);
-  document.getElementById('inp-visit-place').value = '';
-  renderVisitHistory(cardId, progId);
-  openSheet('sheet-log-visit');
+const card = state.loungeCards.find(c=>c.id===cardId);
+const prog = card?.programs.find(p=>p.id===progId);
+if (!prog) return;
+document.getElementById('visit-card-id').value = cardId;
+document.getElementById('visit-prog-id').value = progId;
+const used = getUsedVisits(prog);
+const remaining = Math.max(0, getVisitLimitForNow(prog) - used);
+document.getElementById('visit-prog-info').innerHTML = card.name+' — '+prog.name+'<br><span style="font-size:13px;color:var(--sky);font-weight:700;">'+remaining+' visits left this period ('+CYCLE_LABELS[prog.cycle]+')</span>';
+document.getElementById('inp-visit-date').value = new Date().toISOString().slice(0,10);
+document.getElementById('inp-visit-place').value = '';
+renderVisitHistory(cardId, progId);
+openSheet('sheet-log-visit');
 }
 function renderVisitHistory(cardId, progId) {
-  const card = state.loungeCards.find(c=>c.id===cardId);
-  const prog = card?.programs.find(p=>p.id===progId);
-  const list = document.getElementById('visit-history-list');
-  if (!prog || !list) return;
-  const visits = [...(prog.visits||[])].sort((a,b)=>b.date.localeCompare(a.date));
-  if (!visits.length) { list.innerHTML = `<div style="font-size:12px;color:var(--muted);padding:8px 0;">No visits logged yet</div>`; return; }
-  list.innerHTML = visits.map(v => `
-    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">
-      <span style="font-size:16px;">🛋</span>
-      <div style="flex:1;">
-        <div style="font-size:13px;font-weight:600;">${fmt(v.date)}</div>
-        ${v.place?`<div style="font-size:11px;color:var(--muted);">${v.place}</div>`:''}
-      </div>
-      <span onclick="deleteVisit('${cardId}','${progId}','${v.id}')" style="color:var(--red);font-size:15px;cursor:pointer;padding:4px;">🗑</span>
-    </div>`).join('');
+const card = state.loungeCards.find(c=>c.id===cardId);
+const prog = card?.programs.find(p=>p.id===progId);
+const list = document.getElementById('visit-history-list');
+if (!prog || !list) return;
+const visits = [...(prog.visits||[])].sort((a,b)=>b.date.localeCompare(a.date));
+if (!visits.length) { list.innerHTML = `<div style="font-size:12px;color:var(--muted);padding:8px 0;">No visits logged yet</div>`; return; }
+list.innerHTML = visits.map(v => ` <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);"> <span style="font-size:16px;">🛋</span> <div style="flex:1;"> <div style="font-size:13px;font-weight:600;">${fmt(v.date)}</div> ${v.place?`<div style="font-size:11px;color:var(--muted);">${v.place}</div>`:''} </div> <span onclick="deleteVisit('${cardId}','${progId}','${v.id}')" style="color:var(--red);font-size:15px;cursor:pointer;padding:4px;">🗑</span> </div>`).join('');
 }
 function logVisit() {
-  const cardId = document.getElementById('visit-card-id').value;
-  const progId = document.getElementById('visit-prog-id').value;
-  const card = state.loungeCards.find(c=>c.id===cardId);
-  const prog = card?.programs.find(p=>p.id===progId);
-  if (!prog) return;
-  const date = document.getElementById('inp-visit-date').value;
-  if (!date) { showToast('Pick a date'); return; }
-  const place = document.getElementById('inp-visit-place').value.trim();
-  if (!prog.visits) prog.visits = [];
-  prog.visits.push({ id: uid(), date, place });
-  save(); renderLoungeCards();
-  renderVisitHistory(cardId, progId);
-  const used = getUsedVisits(prog);
-  const remaining = Math.max(0, prog.limit - used);
-  document.getElementById('visit-prog-info').innerHTML = card.name+' — '+prog.name+'<br><span style="font-size:13px;color:var(--sky);font-weight:700;">'+remaining+' visits left this period ('+CYCLE_LABELS[prog.cycle]+')</span>';
-  showToast(`Visit logged — ${remaining} left ✅`);
-  document.getElementById('inp-visit-place').value = '';
+const cardId = document.getElementById('visit-card-id').value;
+const progId = document.getElementById('visit-prog-id').value;
+const card = state.loungeCards.find(c=>c.id===cardId);
+const prog = card?.programs.find(p=>p.id===progId);
+if (!prog) return;
+const date = document.getElementById('inp-visit-date').value;
+if (!date) { showToast('Pick a date'); return; }
+const place = document.getElementById('inp-visit-place').value.trim();
+if (!prog.visits) prog.visits = [];
+prog.visits.push({ id: uid(), date, place });
+save(); renderLoungeCards();
+renderVisitHistory(cardId, progId);
+const used = getUsedVisits(prog);
+const remaining = Math.max(0, prog.limit - used);
+document.getElementById('visit-prog-info').innerHTML = card.name+' — '+prog.name+'<br><span style="font-size:13px;color:var(--sky);font-weight:700;">'+remaining+' visits left this period ('+CYCLE_LABELS[prog.cycle]+')</span>';
+showToast(`Visit logged — ${remaining} left ✅`);
+document.getElementById('inp-visit-place').value = '';
 }
 function deleteVisit(cardId, progId, visitId) {
-  const card = state.loungeCards.find(c=>c.id===cardId);
-  const prog = card?.programs.find(p=>p.id===progId);
-  if (!prog) return;
-  prog.visits = (prog.visits||[]).filter(v=>v.id!==visitId);
-  save(); renderLoungeCards(); renderVisitHistory(cardId, progId);
-  showToast('Visit removed');
+const card = state.loungeCards.find(c=>c.id===cardId);
+const prog = card?.programs.find(p=>p.id===progId);
+if (!prog) return;
+prog.visits = (prog.visits||[]).filter(v=>v.id!==visitId);
+save(); renderLoungeCards(); renderVisitHistory(cardId, progId);
+showToast('Visit removed');
 }
 // ============= GLOBAL ERROR HANDLING =============
 // Catches any bug that wasn't already wrapped in a try/catch so it surfaces
@@ -3627,371 +3400,131 @@ window.addEventListener('error',e=>{console.error(e.error||e.message);showToast(
 window.addEventListener('unhandledrejection',e=>{console.error(e.reason);showToast('⚠️ Something went wrong — your data is safe');});
 const shareSelections = { itinerary: true, packing: true, flights: false, budget: false, reminders: false };
 function toggleShareOpt(key) {
-  shareSelections[key] = !shareSelections[key];
-  const el = document.getElementById('share-opt-' + key);
-  el.classList.toggle('selected', shareSelections[key]);
+shareSelections[key] = !shareSelections[key];
+const el = document.getElementById('share-opt-' + key);
+el.classList.toggle('selected', shareSelections[key]);
 }
 function populateShareTripSelect() {
-  const sel = document.getElementById('share-trip-select');
-  if (!sel) return;
-  if (!state.trips.length) { sel.innerHTML = '<option>No trips yet</option>'; return; }
-  const activeId = state.activeTripId.it || state.activeTripId.pk || state.trips[0]?.id;
-  sel.innerHTML = state.trips.map(t =>
-    `<option value="${t.id}" ${t.id === activeId ? 'selected' : ''}>${t.emoji} ${t.dest}</option>`
-  ).join('');
+const sel = document.getElementById('share-trip-select');
+if (!sel) return;
+if (!state.trips.length) { sel.innerHTML = '<option>No trips yet</option>'; return; }
+const activeId = state.activeTripId.it || state.activeTripId.pk || state.trips[0]?.id;
+sel.innerHTML = state.trips.map(t => `<option value="${t.id}" ${t.id === activeId ? 'selected' : ''}>${t.emoji} ${t.dest}</option>`
+).join('');
 }
 function getShareTrip() {
-  const sel = document.getElementById('share-trip-select');
-  const id = sel?.value;
-  return state.trips.find(t => t.id === id) || state.trips[0];
+const sel = document.getElementById('share-trip-select');
+const id = sel?.value;
+return state.trips.find(t => t.id === id) || state.trips[0];
 }
 function buildShareText(trip) {
-  if (!trip) return 'No trip selected.';
-  let txt = `✈️ *${trip.dest}*\n`;
-  if (trip.start && trip.end) txt += `📅 ${fmt(trip.start)} → ${fmt(trip.end)}\n`;
-  txt += '\n';
-  if (shareSelections.itinerary) {
-    const items = state.itineraries[trip.id] || [];
-    if (items.length) {
-      txt += `*📅 ITINERARY*\n`;
-      const byDay = {};
-      items.forEach(a => { if (!byDay[a.day]) byDay[a.day] = []; byDay[a.day].push(a); });
-      Object.keys(byDay).sort((a,b)=>+a-+b).forEach(d => {
-        const dayDate = trip.start ? getDayDate(trip.start, +d) : '';
-        txt += `\n*Day ${d}${dayDate ? ' · ' + dayDate : ''}*\n`;
-        byDay[d].sort((a,b)=>(a.time||'').localeCompare(b.time||'')).forEach(a => {
-          txt += `  ${a.time || '—'} · ${a.name}${a.note ? ' (' + a.note + ')' : ''}\n`;
-        });
-      });
-      txt += '\n';
-    }
-  }
-  if (shareSelections.packing) {
-    const items = state.packingLists[trip.id] || [];
-    if (items.length) {
-      txt += `*🧳 PACKING LIST*\n`;
-      const cats = {};
-      items.forEach(i => { if (!cats[i.cat]) cats[i.cat] = []; cats[i.cat].push(i); });
-      Object.keys(cats).forEach(cat => {
-        txt += `\n${cat}\n`;
-        cats[cat].forEach(i => txt += `  ${i.checked ? '✅' : '☐'} ${i.name}\n`);
-      });
-      txt += '\n';
-    }
-  }
-  if (shareSelections.flights) {
-    const flights = state.flights[trip.id] || [];
-    const hotels = state.hotels[trip.id] || [];
-    if (flights.length || hotels.length) {
-      txt += `*✈️ TRAVEL INFO*\n`;
-      flights.forEach(f => {
-        txt += `\n✈️ ${f.airline} ${f.number}: ${f.from.toUpperCase()} → ${f.to.toUpperCase()}\n`;
-        if (f.date) txt += `   Date: ${fmt(f.date)}\n`;
-        if (f.dep) txt += `   Depart: ${f.dep}  Arrive: ${f.arr || '—'}\n`;
-        if (f.seat) txt += `   Seat: ${f.seat} (${f.cls})\n`;
-        if (f.pnr) txt += `   PNR: ${f.pnr}\n`;
-      });
-      hotels.forEach(h => {
-        txt += `\n🏨 ${h.name}\n`;
-        if (h.checkin) txt += `   Check-in: ${fmt(h.checkin)}  Check-out: ${fmt(h.checkout)}\n`;
-        if (h.ref) txt += `   Ref: ${h.ref}\n`;
-        if (h.addr) txt += `   📍 ${h.addr}\n`;
-      });
-      txt += '\n';
-    }
-  }
-  if (shareSelections.budget) {
-    const expenses = state.expenses[trip.id] || [];
-    const total = expenses.reduce((s,e)=>s+e.amount,0);
-    const cur = trip.currency || '';
-    txt += `*💰 BUDGET*\n`;
-    txt += `Budget: ${cur} ${trip.budget || '—'}  |  Spent: ${cur} ${total.toFixed(0)}  |  Left: ${cur} ${((trip.budget||0)-total).toFixed(0)}\n`;
-    if (expenses.length) {
-      txt += '\nExpenses:\n';
-      expenses.forEach(e => txt += `  ${e.cat}: ${e.name} — ${cur} ${e.amount.toFixed(2)}\n`);
-    }
-    txt += '\n';
-  }
-  if (shareSelections.reminders) {
-    const rems = (state.reminders || []).filter(r => !r.done);
-    if (rems.length) {
-      txt += `*🔔 REMINDERS*\n`;
-      rems.forEach(r => {
-        const due = r.datetime ? new Date(r.datetime).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : '';
-        txt += `  ☐ ${r.title}${due ? ' · ' + due : ''}${r.note ? '\n    ' + r.note : ''}\n`;
-      });
-      txt += '\n';
-    }
-  }
-  txt += `_Shared from Voyage Travel Planner_`;
-  return txt;
+if (!trip) return 'No trip selected.';
+let txt = `✈️ *${trip.dest}*\n`;
+if (trip.start && trip.end) txt += `📅 ${fmt(trip.start)} → ${fmt(trip.end)}\n`;
+txt += '\n';
+if (shareSelections.itinerary) { const items = state.itineraries[trip.id] || []; if (items.length) { txt += `*📅 ITINERARY*\n`; const byDay = {}; items.forEach(a => { if (!byDay[a.day]) byDay[a.day] = []; byDay[a.day].push(a); }); Object.keys(byDay).sort((a,b)=>+a-+b).forEach(d => { const dayDate = trip.start ? getDayDate(trip.start, +d) : ''; txt += `\n*Day ${d}${dayDate ? ' · ' + dayDate : ''}*\n`; byDay[d].sort((a,b)=>(a.time||'').localeCompare(b.time||'')).forEach(a => { txt += ` ${a.time || '—'} · ${a.name}${a.note ? ' (' + a.note + ')' : ''}\n`; }); }); txt += '\n'; }
+}
+if (shareSelections.packing) { const items = state.packingLists[trip.id] || []; if (items.length) { txt += `*🧳 PACKING LIST*\n`; const cats = {}; items.forEach(i => { if (!cats[i.cat]) cats[i.cat] = []; cats[i.cat].push(i); }); Object.keys(cats).forEach(cat => { txt += `\n${cat}\n`; cats[cat].forEach(i => txt += ` ${i.checked ? '✅' : '☐'} ${i.name}\n`); }); txt += '\n'; }
+}
+if (shareSelections.flights) { const flights = state.flights[trip.id] || []; const hotels = state.hotels[trip.id] || []; if (flights.length || hotels.length) { txt += `*✈️ TRAVEL INFO*\n`; flights.forEach(f => { txt += `\n✈️ ${f.airline} ${f.number}: ${f.from.toUpperCase()} → ${f.to.toUpperCase()}\n`; if (f.date) txt += ` Date: ${fmt(f.date)}\n`; if (f.dep) txt += ` Depart: ${f.dep} Arrive: ${f.arr || '—'}\n`; if (f.seat) txt += ` Seat: ${f.seat} (${f.cls})\n`; if (f.pnr) txt += ` PNR: ${f.pnr}\n`; }); hotels.forEach(h => { txt += `\n🏨 ${h.name}\n`; if (h.checkin) txt += ` Check-in: ${fmt(h.checkin)} Check-out: ${fmt(h.checkout)}\n`; if (h.ref) txt += ` Ref: ${h.ref}\n`; if (h.addr) txt += ` 📍 ${h.addr}\n`; }); txt += '\n'; }
+}
+if (shareSelections.budget) { const expenses = state.expenses[trip.id] || []; const total = expenses.reduce((s,e)=>s+e.amount,0); const cur = trip.currency || ''; txt += `*💰 BUDGET*\n`; txt += `Budget: ${cur} ${trip.budget || '—'} | Spent: ${cur} ${total.toFixed(0)} | Left: ${cur} ${((trip.budget||0)-total).toFixed(0)}\n`; if (expenses.length) { txt += '\nExpenses:\n'; expenses.forEach(e => txt += ` ${e.cat}: ${e.name} — ${cur} ${e.amount.toFixed(2)}\n`); } txt += '\n';
+}
+if (shareSelections.reminders) { const rems = (state.reminders || []).filter(r => !r.done); if (rems.length) { txt += `*🔔 REMINDERS*\n`; rems.forEach(r => { const due = r.datetime ? new Date(r.datetime).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : ''; txt += ` ☐ ${r.title}${due ? ' · ' + due : ''}${r.note ? '\n ' + r.note : ''}\n`; }); txt += '\n'; }
+}
+txt += `_Shared from Voyage Travel Planner_`;
+return txt;
 }
 function doShareText() {
-  const trip = getShareTrip();
-  const text = buildShareText(trip);
-  if (navigator.share) {
-    navigator.share({ text }).catch(() => fallbackCopy(text));
-  } else {
-    fallbackCopy(text);
-  }
-  closeSheet('sheet-share');
+const trip = getShareTrip();
+const text = buildShareText(trip);
+if (navigator.share) { navigator.share({ text }).catch(() => fallbackCopy(text));
+} else { fallbackCopy(text);
+}
+closeSheet('sheet-share');
 }
 function fallbackCopy(text) {
-  navigator.clipboard.writeText(text).then(() => {
-    showToast('Copied! Paste in WhatsApp / iMessage 📋');
-  }).catch(() => {
-    const ta = document.createElement('textarea');
-    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
-    document.body.appendChild(ta); ta.select();
-    document.execCommand('copy');
-    document.body.removeChild(ta);
-    showToast('Copied! Paste in WhatsApp / iMessage 📋');
-  });
+navigator.clipboard.writeText(text).then(() => { showToast('Copied! Paste in WhatsApp / iMessage 📋');
+}).catch(() => { const ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); showToast('Copied! Paste in WhatsApp / iMessage 📋');
+});
 }
 function buildPDFHTML(trip) {
-  if (!trip) return '<p>No trip selected.</p>';
-  let html = `<h1>${trip.emoji} ${trip.dest}</h1>`;
-  if (trip.start && trip.end) html += `<div class="pdf-subtitle">📅 ${fmt(trip.start)} → ${fmt(trip.end)}</div>`;
-  if (shareSelections.itinerary) {
-    const items = state.itineraries[trip.id] || [];
-    if (items.length) {
-      html += '<h2>📅 Itinerary</h2>';
-      const byDay = {};
-      items.forEach(a => { if (!byDay[a.day]) byDay[a.day] = []; byDay[a.day].push(a); });
-      Object.keys(byDay).sort((a,b)=>+a-+b).forEach(d => {
-        const dayDate = trip.start ? getDayDate(trip.start, +d) : '';
-        html += `<div class="pdf-day">Day ${d}${dayDate ? ' · ' + dayDate : ''}</div>`;
-        byDay[d].sort((a,b)=>(a.time||'').localeCompare(b.time||'')).forEach(a => {
-          html += `<div class="pdf-row"><span class="pdf-time">${a.time||'—'}</span><span>${a.name}${a.note?'<br><small style="color:#9DAAB5">'+a.note+'</small>':''}</span></div>`;
-        });
-      });
-    }
-  }
-  if (shareSelections.packing) {
-    const items = state.packingLists[trip.id] || [];
-    if (items.length) {
-      html += '<h2>🧳 Packing List</h2>';
-      const cats = {};
-      items.forEach(i => { if (!cats[i.cat]) cats[i.cat] = []; cats[i.cat].push(i); });
-      Object.keys(cats).forEach(cat => {
-        html += `<div class="pdf-day">${cat}</div>`;
-        cats[cat].forEach(i => html += `<div class="pdf-row"><span class="pdf-check">${i.checked?'☑':'☐'}</span><span style="${i.checked?'text-decoration:line-through;opacity:0.5':''}">${i.name}</span></div>`);
-      });
-    }
-  }
-  if (shareSelections.flights) {
-    const flights = state.flights[trip.id] || [];
-    const hotels = state.hotels[trip.id] || [];
-    if (flights.length || hotels.length) {
-      html += '<h2>✈️ Travel Info</h2>';
-      flights.forEach(f => {
-        html += `<div class="pdf-day">✈️ ${f.airline} ${f.number}: ${f.from.toUpperCase()} → ${f.to.toUpperCase()}</div>`;
-        html += `<div class="pdf-row"><span class="pdf-cat">Date</span>${f.date?fmt(f.date):'—'}</div>`;
-        html += `<div class="pdf-row"><span class="pdf-cat">Time</span>${f.dep||'—'} → ${f.arr||'—'} &nbsp; (${f.dur||''})</div>`;
-        html += `<div class="pdf-row"><span class="pdf-cat">Seat / Class</span>${f.seat||'—'} / ${f.cls||'—'}</div>`;
-        if (f.pnr) html += `<div class="pdf-row"><span class="pdf-cat">PNR</span>${f.pnr}</div>`;
-      });
-      hotels.forEach(h => {
-        html += `<div class="pdf-day">🏨 ${h.name}</div>`;
-        html += `<div class="pdf-row"><span class="pdf-cat">Check-in</span>${h.checkin?fmt(h.checkin):'—'} → ${h.checkout?fmt(h.checkout):'—'}</div>`;
-        if (h.ref) html += `<div class="pdf-row"><span class="pdf-cat">Ref</span>${h.ref}</div>`;
-        if (h.addr) html += `<div class="pdf-row"><span class="pdf-cat">Address</span>${h.addr}</div>`;
-      });
-    }
-  }
-  if (shareSelections.budget) {
-    const expenses = state.expenses[trip.id] || [];
-    const total = expenses.reduce((s,e)=>s+e.amount,0);
-    const cur = trip.currency || '';
-    html += '<h2>💰 Budget</h2>';
-    html += `<div class="pdf-row"><span class="pdf-cat">Budget</span>${cur} ${trip.budget||'—'}</div>`;
-    html += `<div class="pdf-row"><span class="pdf-cat">Spent</span>${cur} ${total.toFixed(2)}</div>`;
-    html += `<div class="pdf-row"><span class="pdf-cat">Remaining</span>${cur} ${((trip.budget||0)-total).toFixed(2)}</div>`;
-    if (expenses.length) {
-      html += `<div class="pdf-day" style="margin-top:10px;">Expenses</div>`;
-      expenses.forEach(e => html += `<div class="pdf-row"><span class="pdf-cat">${e.cat}</span>${e.name}<span style="margin-left:auto;font-weight:600;">${cur} ${e.amount.toFixed(2)}</span></div>`);
-    }
-  }
-  if (shareSelections.reminders) {
-    const rems = (state.reminders||[]).filter(r=>!r.done);
-    if (rems.length) {
-      html += '<h2>🔔 Reminders</h2>';
-      rems.forEach(r => {
-        const due = r.datetime ? new Date(r.datetime).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : '';
-        html += `<div class="pdf-row"><span class="pdf-check">☐</span><span>${r.title}${due?' <small style="color:#9DAAB5">· '+due+'</small>':''}${r.note?'<br><small style="color:#9DAAB5">'+r.note+'</small>':''}</span></div>`;
-      });
-    }
-  }
-  html += `<div style="margin-top:30px;font-size:11px;color:#9DAAB5;border-top:1px solid #E8E4DC;padding-top:12px;">Generated by Voyage Travel Planner · ${new Date().toLocaleDateString()}</div>`;
-  return html;
+if (!trip) return '<p>No trip selected.</p>';
+let html = `<h1>${trip.emoji} ${trip.dest}</h1>`;
+if (trip.start && trip.end) html += `<div class="pdf-subtitle">📅 ${fmt(trip.start)} → ${fmt(trip.end)}</div>`;
+if (shareSelections.itinerary) { const items = state.itineraries[trip.id] || []; if (items.length) { html += '<h2>📅 Itinerary</h2>'; const byDay = {}; items.forEach(a => { if (!byDay[a.day]) byDay[a.day] = []; byDay[a.day].push(a); }); Object.keys(byDay).sort((a,b)=>+a-+b).forEach(d => { const dayDate = trip.start ? getDayDate(trip.start, +d) : ''; html += `<div class="pdf-day">Day ${d}${dayDate ? ' · ' + dayDate : ''}</div>`; byDay[d].sort((a,b)=>(a.time||'').localeCompare(b.time||'')).forEach(a => { html += `<div class="pdf-row"><span class="pdf-time">${a.time||'—'}</span><span>${a.name}${a.note?'<br><small style="color:#9DAAB5">'+a.note+'</small>':''}</span></div>`; }); }); }
+}
+if (shareSelections.packing) { const items = state.packingLists[trip.id] || []; if (items.length) { html += '<h2>🧳 Packing List</h2>'; const cats = {}; items.forEach(i => { if (!cats[i.cat]) cats[i.cat] = []; cats[i.cat].push(i); }); Object.keys(cats).forEach(cat => { html += `<div class="pdf-day">${cat}</div>`; cats[cat].forEach(i => html += `<div class="pdf-row"><span class="pdf-check">${i.checked?'☑':'☐'}</span><span style="${i.checked?'text-decoration:line-through;opacity:0.5':''}">${i.name}</span></div>`); }); }
+}
+if (shareSelections.flights) { const flights = state.flights[trip.id] || []; const hotels = state.hotels[trip.id] || []; if (flights.length || hotels.length) { html += '<h2>✈️ Travel Info</h2>'; flights.forEach(f => { html += `<div class="pdf-day">✈️ ${f.airline} ${f.number}: ${f.from.toUpperCase()} → ${f.to.toUpperCase()}</div>`; html += `<div class="pdf-row"><span class="pdf-cat">Date</span>${f.date?fmt(f.date):'—'}</div>`; html += `<div class="pdf-row"><span class="pdf-cat">Time</span>${f.dep||'—'} → ${f.arr||'—'} &nbsp; (${f.dur||''})</div>`; html += `<div class="pdf-row"><span class="pdf-cat">Seat / Class</span>${f.seat||'—'} / ${f.cls||'—'}</div>`; if (f.pnr) html += `<div class="pdf-row"><span class="pdf-cat">PNR</span>${f.pnr}</div>`; }); hotels.forEach(h => { html += `<div class="pdf-day">🏨 ${h.name}</div>`; html += `<div class="pdf-row"><span class="pdf-cat">Check-in</span>${h.checkin?fmt(h.checkin):'—'} → ${h.checkout?fmt(h.checkout):'—'}</div>`; if (h.ref) html += `<div class="pdf-row"><span class="pdf-cat">Ref</span>${h.ref}</div>`; if (h.addr) html += `<div class="pdf-row"><span class="pdf-cat">Address</span>${h.addr}</div>`; }); }
+}
+if (shareSelections.budget) { const expenses = state.expenses[trip.id] || []; const total = expenses.reduce((s,e)=>s+e.amount,0); const cur = trip.currency || ''; html += '<h2>💰 Budget</h2>'; html += `<div class="pdf-row"><span class="pdf-cat">Budget</span>${cur} ${trip.budget||'—'}</div>`; html += `<div class="pdf-row"><span class="pdf-cat">Spent</span>${cur} ${total.toFixed(2)}</div>`; html += `<div class="pdf-row"><span class="pdf-cat">Remaining</span>${cur} ${((trip.budget||0)-total).toFixed(2)}</div>`; if (expenses.length) { html += `<div class="pdf-day" style="margin-top:10px;">Expenses</div>`; expenses.forEach(e => html += `<div class="pdf-row"><span class="pdf-cat">${e.cat}</span>${e.name}<span style="margin-left:auto;font-weight:600;">${cur} ${e.amount.toFixed(2)}</span></div>`); }
+}
+if (shareSelections.reminders) { const rems = (state.reminders||[]).filter(r=>!r.done); if (rems.length) { html += '<h2>🔔 Reminders</h2>'; rems.forEach(r => { const due = r.datetime ? new Date(r.datetime).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : ''; html += `<div class="pdf-row"><span class="pdf-check">☐</span><span>${r.title}${due?' <small style="color:#9DAAB5">· '+due+'</small>':''}${r.note?'<br><small style="color:#9DAAB5">'+r.note+'</small>':''}</span></div>`; }); }
+}
+html += `<div style="margin-top:30px;font-size:11px;color:#9DAAB5;border-top:1px solid #E8E4DC;padding-top:12px;">Generated by Voyage Travel Planner · ${new Date().toLocaleDateString()}</div>`;
+return html;
 }
 function doSharePDF() {
-  const trip = getShareTrip();
-  const pdfEl = document.getElementById('pdf-area');
-  pdfEl.innerHTML = buildPDFHTML(trip);
-  pdfEl.style.display = 'block';
-  closeSheet('sheet-share');
-  setTimeout(() => {
-    window.print();
-    setTimeout(() => { pdfEl.style.display = 'none'; }, 1000);
-  }, 300);
+const trip = getShareTrip();
+const pdfEl = document.getElementById('pdf-area');
+pdfEl.innerHTML = buildPDFHTML(trip);
+pdfEl.style.display = 'block';
+closeSheet('sheet-share');
+setTimeout(() => { window.print(); setTimeout(() => { pdfEl.style.display = 'none'; }, 1000);
+}, 300);
 }
 let dashExpandedTrips = new Set();
 function toggleDashAnalysis(tripId) {
-  dashExpandedTrips.has(tripId) ? dashExpandedTrips.delete(tripId) : dashExpandedTrips.add(tripId);
-  renderDashboard();
+dashExpandedTrips.has(tripId) ? dashExpandedTrips.delete(tripId) : dashExpandedTrips.add(tripId);
+renderDashboard();
 }
 function renderDashboard() {
-  const container = document.getElementById('dashboard-content');
-  if (!container) return;
-  if (!state.trips.length) {
-    container.innerHTML = '<div class="empty-state"><div class="emoji">📊</div><p>Add a trip to see your dashboard</p></div>';
-    return;
-  }
-  const now = new Date();
-  // ---- SUMMARY STRIP ----
-  const allExp = state.trips.flatMap(t => state.expenses[t.id]||[]);
-  const totalTrips = state.trips.length;
-  const activeTrip = state.trips.find(t => t.start && t.end && now >= new Date(t.start+'T12:00') && now <= new Date(t.end+'T12:00'));
-  const upcomingTrip = state.trips.filter(t => t.start && new Date(t.start+'T12:00') > now).sort((a,b) => new Date(a.start) - new Date(b.start))[0];
-  const summaryHtml = '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px;">'
-    + '<div class="card" style="text-align:center;padding:12px 8px;"><div style="font-size:22px;font-weight:800;color:var(--sky);">'+totalTrips+'</div><div style="font-size:10px;color:var(--muted);font-weight:600;">TRIPS</div></div>'
-    + '<div class="card" style="text-align:center;padding:12px 8px;"><div style="font-size:22px;font-weight:800;color:var(--green);">'+(activeTrip?'1':upcomingTrip?'0':'—')+'</div><div style="font-size:10px;color:var(--muted);font-weight:600;">'+(activeTrip?'ACTIVE':upcomingTrip?'UPCOMING':'STATUS')+'</div></div>'
-    + '<div class="card" style="text-align:center;padding:12px 8px;"><div style="font-size:22px;font-weight:800;color:var(--sand);">'+allExp.length+'</div><div style="font-size:10px;color:var(--muted);font-weight:600;">EXPENSES</div></div>'
-    + '</div>';
-  const tripCards = state.trips.map(t => {
-    const expenses = state.expenses[t.id] || [];
-    const moneyIn = (state.moneyIn?.[t.id]||[]).reduce((s,x)=>s+x.amount,0);
-    const spent = expenses.reduce((s,e) => s+(e.amountBase||e.amount), 0);
-    const budget = (t.budget||0) + moneyIn;
-    const remaining = budget - spent;
-    const pct = budget ? Math.min(100, Math.round((spent/budget)*100)) : 0;
-    const packItems = state.packingLists[t.id] || [];
-    const packed = packItems.filter(i=>i.checked).length;
-    const packPct = packItems.length ? Math.round((packed/packItems.length)*100) : 0;
-    const acts = (state.itineraries[t.id]||[]).length;
-    const flights = (state.flights[t.id]||[]).length;
-    const hotels = (state.hotels[t.id]||[]).length;
-    const docs = (state.documents?.[t.id]||[]).length;
-    const daysLeft = t.end ? Math.ceil((new Date(t.end+'T12:00') - now)/864e5) : null;
-    const isActive = t.start && t.end && now >= new Date(t.start+'T12:00') && now <= new Date(t.end+'T12:00');
-    const cur = t.currency || '';
-    const tripDays = (t.start&&t.end) ? Math.max(1,Math.round((new Date(t.end+'T12:00')-new Date(t.start+'T12:00'))/864e5)+1) : null;
-    const avgPerDay = tripDays && spent ? spent/tripDays : null;
-    const daysElapsed = t.start ? Math.max(0,Math.min(tripDays||0,Math.ceil((now-new Date(t.start+'T12:00'))/864e5))) : 0;
-    const projectedTotal = daysElapsed > 0 && tripDays && avgPerDay ? avgPerDay * tripDays : null;
-    const overUnder = projectedTotal && budget ? projectedTotal - budget : null;
-    // Category breakdown
-    const catTotals = {};
-    const payTotals = {};
-    expenses.forEach(e => {
-      const amt = e.amountBase||e.amount;
-      catTotals[e.cat] = (catTotals[e.cat]||0) + amt;
-      const pm = e.payMethod==='💳 Credit Card'&&e.cardName ? '💳 '+e.cardName : (e.payMethod||'💵 Cash');
-      payTotals[pm] = (payTotals[pm]||0) + amt;
-    });
-    const topCats = Object.keys(catTotals).sort((a,b)=>catTotals[b]-catTotals[a]);
-    const biggest = expenses.length ? [...expenses].sort((a,b)=>(b.amountBase||b.amount)-(a.amountBase||a.amount))[0] : null;
-    const expanded = dashExpandedTrips.has(t.id);
-    const catBars = topCats.map(cat => {
-      const amt = catTotals[cat], share = spent ? Math.round((amt/spent)*100) : 0;
-      return '<div style="margin-bottom:8px;">'
-        +'<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;">'
-        +'<span style="color:var(--mid);">'+(CAT_ICONS[cat]||'📌')+' '+cat+'</span>'
-        +'<span style="font-weight:600;color:var(--slate);">'+fmtCurrency(amt,cur)+' <span style="color:var(--muted);font-weight:400;">('+share+'%)</span></span></div>'
-        +'<div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;">'
-        +'<div style="height:100%;width:'+share+'%;background:var(--sky);border-radius:3px;"></div></div></div>';
-    }).join('');
-    const payRows = Object.keys(payTotals).sort((a,b)=>payTotals[b]-payTotals[a]).slice(0,5).map(pm => {
-      const amt = payTotals[pm], share = spent ? Math.round((amt/spent)*100) : 0;
-      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);">'
-        +'<span style="font-size:12px;color:var(--mid);">'+pm+'</span>'
-        +'<span style="font-size:12px;font-weight:700;">'+fmtCurrency(amt,cur)+' <span style="font-size:10px;color:var(--muted);font-weight:400;">('+share+'%)</span></span></div>';
-    }).join('');
-    const statBoxes = [
-      biggest ? { label:'BIGGEST EXPENSE', val: biggest.name, sub: fmtCurrency(biggest.amountBase||biggest.amount,cur), col:'var(--sky-dark)' } : null,
-      avgPerDay ? { label:'AVG / DAY', val: fmtCurrency(avgPerDay,cur), sub: tripDays+'d trip', col:'var(--sky-dark)' } : null,
-      projectedTotal ? { label:'PROJECTED TOTAL', val: fmtCurrency(projectedTotal,cur), sub: (overUnder>0?'⚠️ +'+fmtCurrency(overUnder,cur)+' over':'✅ '+fmtCurrency(Math.abs(overUnder||0),cur)+' under budget'), col: overUnder>0?'var(--red)':'var(--green)' } : null,
-      moneyIn > 0 ? { label:'MONEY RECEIVED', val: '+'+fmtCurrency(moneyIn,cur), sub:'Added to budget', col:'var(--green)' } : null,
-    ].filter(Boolean);
-    const statHtml = statBoxes.length ? '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">'
-      +statBoxes.map(b=>'<div style="background:var(--surface2);border-radius:10px;padding:10px;">'
-        +'<div style="font-size:9px;color:var(--muted);font-weight:700;letter-spacing:.5px;">'+b.label+'</div>'
-        +'<div style="font-size:13px;font-weight:800;color:'+b.col+';margin-top:3px;">'+b.val+'</div>'
-        +'<div style="font-size:10px;color:var(--muted);">'+b.sub+'</div></div>').join('')+'</div>' : '';
-    const infoRow = '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px;">'
-      +[['📅',acts,'Activities'],['✈️',flights,'Flights'],['🏨',hotels,'Hotels'],['📄',docs,'Docs']].map(([ic,n,lb])=>
-        '<div style="background:var(--surface2);border-radius:10px;padding:8px 4px;text-align:center;">'
-        +'<div style="font-size:16px;font-weight:800;color:var(--sky);">'+n+'</div>'
-        +'<div style="font-size:9px;color:var(--muted);font-weight:600;">'+lb+'</div></div>').join('')+'</div>';
-    const analysisHtml = !expenses.length
-      ? '<div style="font-size:12px;color:var(--muted);padding:8px 0;">No expenses logged yet</div>'
-      : catBars
-        +(payRows ? '<div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.5px;margin:12px 0 6px;">BY PAYMENT METHOD</div>'+payRows : '')
-        + statHtml;
-    return '<div class="card" style="margin-bottom:14px;">'
-      +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">'
-      +'<span style="font-size:28px;">'+t.emoji+'</span>'
-      +'<div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:16px;">'+t.dest+'</div>'
-      +'<div style="font-size:12px;color:var(--muted);">'+(t.start?fmt(t.start):'')+(t.end?' → '+fmt(t.end):'')+'</div></div>'
-      +(isActive?'<span style="background:var(--green);color:white;border-radius:8px;padding:3px 8px;font-size:11px;font-weight:700;flex-shrink:0;">ACTIVE</span>'
-        :daysLeft>0?'<span style="background:var(--sky-light);color:var(--sky-dark);border-radius:8px;padding:3px 8px;font-size:11px;font-weight:600;flex-shrink:0;">In '+daysLeft+'d</span>':'')
-      +'</div>'
-      + infoRow
-      +'<div style="margin-bottom:8px;">'
-      +'<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px;"><span>💰 Budget</span><span>'+fmtCurrency(spent,cur)+' / '+fmtCurrency(budget,cur)+(remaining<0?'<span style="color:var(--red);font-weight:700;">Over budget</span>':'<span style="color:var(--green);">'+fmtCurrency(remaining,cur)+' left</span>')+'</span></div>'
-      +'<div style="height:7px;background:var(--border);border-radius:4px;overflow:hidden;"><div style="height:100%;width:'+pct+'%;background:'+( pct>100?'var(--red)':pct>80?'var(--sand)':'var(--sky)')+';border-radius:4px;transition:width .4s;"></div></div></div>'
-      +'<div style="margin-bottom:8px;">'
-      +'<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px;"><span>🧳 Packing</span><span>'+packed+'/'+packItems.length+' packed</span></div>'
-      +'<div style="height:7px;background:var(--border);border-radius:4px;overflow:hidden;"><div style="height:100%;width:'+packPct+'%;background:var(--sand);border-radius:4px;transition:width .4s;"></div></div></div>'
-      +'<div onclick="toggleDashAnalysis(this.dataset.id)" data-id="'+t.id+'" style="display:flex;align-items:center;justify-content:center;gap:5px;padding:9px 0 2px;cursor:pointer;border-top:1px solid var(--border);margin-top:6px;">'
-      +'<span style="font-size:12px;font-weight:700;color:var(--sky);">'+(expanded?'▲ Hide':'▼ Spending Analysis')+'</span></div>'
-      +(expanded?'<div style="margin-top:10px;">'+analysisHtml+'</div>':'')
-      +'</div>';
-  }).join('');
-  // Upcoming reminders
-  const pending = (state.reminders||[]).filter(r=>!r.done&&r.datetime).sort((a,b)=>a.datetime.localeCompare(b.datetime)).slice(0,3);
-  const remHtml = pending.length ? '<div class="section-label" style="margin-top:4px;">⏰ Upcoming Reminders</div>'
-    + pending.map(r => {
-      const due = new Date(r.datetime).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
-      return '<div class="card" style="display:flex;gap:10px;align-items:center;margin-bottom:8px;padding:12px;">'
-        +'<span style="font-size:20px;">'+(REM_CAT_ICONS[r.cat]||'📌')+'</span>'
-        +'<div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:600;color:var(--slate);">'+r.title+'</div>'
-        +'<div style="font-size:11px;color:var(--muted);">'+due+'</div></div>'
-        +'<button onclick="toggleReminder(this.dataset.id)" data-id="'+r.id+'" style="background:var(--green-light);color:var(--green);border:1px solid var(--green);border-radius:8px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;">Done</button>'
-        +'</div>';
-    }).join('') : '';
-  container.innerHTML = summaryHtml + tripCards + remHtml;
+const container = document.getElementById('dashboard-content');
+if (!container) return;
+if (!state.trips.length) { container.innerHTML = '<div class="empty-state"><div class="emoji">📊</div><p>Add a trip to see your dashboard</p></div>'; return;
+}
+const now = new Date();
+// ---- SUMMARY STRIP ----
+const allExp = state.trips.flatMap(t => state.expenses[t.id]||[]);
+const totalTrips = state.trips.length;
+const activeTrip = state.trips.find(t => t.start && t.end && now >= new Date(t.start+'T12:00') && now <= new Date(t.end+'T12:00'));
+const upcomingTrip = state.trips.filter(t => t.start && new Date(t.start+'T12:00') > now).sort((a,b) => new Date(a.start) - new Date(b.start))[0];
+const summaryHtml = '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px;">' + '<div class="card" style="text-align:center;padding:12px 8px;"><div style="font-size:22px;font-weight:800;color:var(--sky);">'+totalTrips+'</div><div style="font-size:10px;color:var(--muted);font-weight:600;">TRIPS</div></div>' + '<div class="card" style="text-align:center;padding:12px 8px;"><div style="font-size:22px;font-weight:800;color:var(--green);">'+(activeTrip?'1':upcomingTrip?'0':'—')+'</div><div style="font-size:10px;color:var(--muted);font-weight:600;">'+(activeTrip?'ACTIVE':upcomingTrip?'UPCOMING':'STATUS')+'</div></div>' + '<div class="card" style="text-align:center;padding:12px 8px;"><div style="font-size:22px;font-weight:800;color:var(--sand);">'+allExp.length+'</div><div style="font-size:10px;color:var(--muted);font-weight:600;">EXPENSES</div></div>' + '</div>';
+const tripCards = state.trips.map(t => { const expenses = state.expenses[t.id] || []; const moneyIn = (state.moneyIn?.[t.id]||[]).reduce((s,x)=>s+x.amount,0); const spent = expenses.reduce((s,e) => s+(e.amountBase||e.amount), 0); const budget = (t.budget||0) + moneyIn; const remaining = budget - spent; const pct = budget ? Math.min(100, Math.round((spent/budget)*100)) : 0; const packItems = state.packingLists[t.id] || []; const packed = packItems.filter(i=>i.checked).length; const packPct = packItems.length ? Math.round((packed/packItems.length)*100) : 0; const acts = (state.itineraries[t.id]||[]).length; const flights = (state.flights[t.id]||[]).length; const hotels = (state.hotels[t.id]||[]).length; const docs = (state.documents?.[t.id]||[]).length; const daysLeft = t.end ? Math.ceil((new Date(t.end+'T12:00') - now)/864e5) : null; const isActive = t.start && t.end && now >= new Date(t.start+'T12:00') && now <= new Date(t.end+'T12:00'); const cur = t.currency || ''; const tripDays = (t.start&&t.end) ? Math.max(1,Math.round((new Date(t.end+'T12:00')-new Date(t.start+'T12:00'))/864e5)+1) : null; const avgPerDay = tripDays && spent ? spent/tripDays : null; const daysElapsed = t.start ? Math.max(0,Math.min(tripDays||0,Math.ceil((now-new Date(t.start+'T12:00'))/864e5))) : 0; const projectedTotal = daysElapsed > 0 && tripDays && avgPerDay ? avgPerDay * tripDays : null; const overUnder = projectedTotal && budget ? projectedTotal - budget : null; // Category breakdown const catTotals = {}; const payTotals = {}; expenses.forEach(e => { const amt = e.amountBase||e.amount; catTotals[e.cat] = (catTotals[e.cat]||0) + amt; const pm = e.payMethod==='💳 Credit Card'&&e.cardName ? '💳 '+e.cardName : (e.payMethod||'💵 Cash'); payTotals[pm] = (payTotals[pm]||0) + amt; }); const topCats = Object.keys(catTotals).sort((a,b)=>catTotals[b]-catTotals[a]); const biggest = expenses.length ? [...expenses].sort((a,b)=>(b.amountBase||b.amount)-(a.amountBase||a.amount))[0] : null; const expanded = dashExpandedTrips.has(t.id); const catBars = topCats.map(cat => { const amt = catTotals[cat], share = spent ? Math.round((amt/spent)*100) : 0; return '<div style="margin-bottom:8px;">' +'<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;">' +'<span style="color:var(--mid);">'+(CAT_ICONS[cat]||'📌')+' '+cat+'</span>' +'<span style="font-weight:600;color:var(--slate);">'+fmtCurrency(amt,cur)+' <span style="color:var(--muted);font-weight:400;">('+share+'%)</span></span></div>' +'<div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;">' +'<div style="height:100%;width:'+share+'%;background:var(--sky);border-radius:3px;"></div></div></div>'; }).join(''); const payRows = Object.keys(payTotals).sort((a,b)=>payTotals[b]-payTotals[a]).slice(0,5).map(pm => { const amt = payTotals[pm], share = spent ? Math.round((amt/spent)*100) : 0; return '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);">' +'<span style="font-size:12px;color:var(--mid);">'+pm+'</span>' +'<span style="font-size:12px;font-weight:700;">'+fmtCurrency(amt,cur)+' <span style="font-size:10px;color:var(--muted);font-weight:400;">('+share+'%)</span></span></div>'; }).join(''); const statBoxes = [ biggest ? { label:'BIGGEST EXPENSE', val: biggest.name, sub: fmtCurrency(biggest.amountBase||biggest.amount,cur), col:'var(--sky-dark)' } : null, avgPerDay ? { label:'AVG / DAY', val: fmtCurrency(avgPerDay,cur), sub: tripDays+'d trip', col:'var(--sky-dark)' } : null, projectedTotal ? { label:'PROJECTED TOTAL', val: fmtCurrency(projectedTotal,cur), sub: (overUnder>0?'⚠️ +'+fmtCurrency(overUnder,cur)+' over':'✅ '+fmtCurrency(Math.abs(overUnder||0),cur)+' under budget'), col: overUnder>0?'var(--red)':'var(--green)' } : null, moneyIn > 0 ? { label:'MONEY RECEIVED', val: '+'+fmtCurrency(moneyIn,cur), sub:'Added to budget', col:'var(--green)' } : null, ].filter(Boolean); const statHtml = statBoxes.length ? '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">' +statBoxes.map(b=>'<div style="background:var(--surface2);border-radius:10px;padding:10px;">' +'<div style="font-size:9px;color:var(--muted);font-weight:700;letter-spacing:.5px;">'+b.label+'</div>' +'<div style="font-size:13px;font-weight:800;color:'+b.col+';margin-top:3px;">'+b.val+'</div>' +'<div style="font-size:10px;color:var(--muted);">'+b.sub+'</div></div>').join('')+'</div>' : ''; const infoRow = '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px;">' +[['📅',acts,'Activities'],['✈️',flights,'Flights'],['🏨',hotels,'Hotels'],['📄',docs,'Docs']].map(([ic,n,lb])=> '<div style="background:var(--surface2);border-radius:10px;padding:8px 4px;text-align:center;">' +'<div style="font-size:16px;font-weight:800;color:var(--sky);">'+n+'</div>' +'<div style="font-size:9px;color:var(--muted);font-weight:600;">'+lb+'</div></div>').join('')+'</div>'; const analysisHtml = !expenses.length ? '<div style="font-size:12px;color:var(--muted);padding:8px 0;">No expenses logged yet</div>' : catBars +(payRows ? '<div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.5px;margin:12px 0 6px;">BY PAYMENT METHOD</div>'+payRows : '') + statHtml; return '<div class="card" style="margin-bottom:14px;">' +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">' +'<span style="font-size:28px;">'+t.emoji+'</span>' +'<div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:16px;">'+t.dest+'</div>' +'<div style="font-size:12px;color:var(--muted);">'+(t.start?fmt(t.start):'')+(t.end?' → '+fmt(t.end):'')+'</div></div>' +(isActive?'<span style="background:var(--green);color:white;border-radius:8px;padding:3px 8px;font-size:11px;font-weight:700;flex-shrink:0;">ACTIVE</span>' :daysLeft>0?'<span style="background:var(--sky-light);color:var(--sky-dark);border-radius:8px;padding:3px 8px;font-size:11px;font-weight:600;flex-shrink:0;">In '+daysLeft+'d</span>':'') +'</div>' + infoRow +'<div style="margin-bottom:8px;">' +'<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px;"><span>💰 Budget</span><span>'+fmtCurrency(spent,cur)+' / '+fmtCurrency(budget,cur)+(remaining<0?'<span style="color:var(--red);font-weight:700;">Over budget</span>':'<span style="color:var(--green);">'+fmtCurrency(remaining,cur)+' left</span>')+'</span></div>' +'<div style="height:7px;background:var(--border);border-radius:4px;overflow:hidden;"><div style="height:100%;width:'+pct+'%;background:'+( pct>100?'var(--red)':pct>80?'var(--sand)':'var(--sky)')+';border-radius:4px;transition:width .4s;"></div></div></div>' +'<div style="margin-bottom:8px;">' +'<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px;"><span>🧳 Packing</span><span>'+packed+'/'+packItems.length+' packed</span></div>' +'<div style="height:7px;background:var(--border);border-radius:4px;overflow:hidden;"><div style="height:100%;width:'+packPct+'%;background:var(--sand);border-radius:4px;transition:width .4s;"></div></div></div>' +'<div onclick="toggleDashAnalysis(this.dataset.id)" data-id="'+t.id+'" style="display:flex;align-items:center;justify-content:center;gap:5px;padding:9px 0 2px;cursor:pointer;border-top:1px solid var(--border);margin-top:6px;">' +'<span style="font-size:12px;font-weight:700;color:var(--sky);">'+(expanded?'▲ Hide':'▼ Spending Analysis')+'</span></div>' +(expanded?'<div style="margin-top:10px;">'+analysisHtml+'</div>':'') +'</div>';
+}).join('');
+// Upcoming reminders
+const pending = (state.reminders||[]).filter(r=>!r.done&&r.datetime).sort((a,b)=>a.datetime.localeCompare(b.datetime)).slice(0,3);
+const remHtml = pending.length ? '<div class="section-label" style="margin-top:4px;">⏰ Upcoming Reminders</div>' + pending.map(r => { const due = new Date(r.datetime).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}); return '<div class="card" style="display:flex;gap:10px;align-items:center;margin-bottom:8px;padding:12px;">' +'<span style="font-size:20px;">'+(REM_CAT_ICONS[r.cat]||'📌')+'</span>' +'<div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:600;color:var(--slate);">'+r.title+'</div>' +'<div style="font-size:11px;color:var(--muted);">'+due+'</div></div>' +'<button onclick="toggleReminder(this.dataset.id)" data-id="'+r.id+'" style="background:var(--green-light);color:var(--green);border:1px solid var(--green);border-radius:8px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;">Done</button>' +'</div>'; }).join('') : '';
+container.innerHTML = summaryHtml + tripCards + remHtml;
 }
 // ============= INIT =============
 (function() {
-  try { load(); } catch(e) { console.error('Load error:', e); }
-  // Safe state defaults
-  if (!state.activeTripId || typeof state.activeTripId !== 'object')
-    state.activeTripId = {it:null, pk:null, bg:null, fl:null, docs:null};
-  ['it','pk','bg','fl','docs'].forEach(k => { if (!(k in state.activeTripId)) state.activeTripId[k] = null; });
-  if (!state.moneyIn) state.moneyIn = {};
-  if (!state.documents) state.documents = {};
-  if (!state.loungeCards) state.loungeCards = [];
-  if (!state.reminders) state.reminders = [];
-  if (!state.customPackCats) state.customPackCats = [];
-  if (!state.customExpCats) state.customExpCats = [];
-  if (!state.deletedPackItems) state.deletedPackItems = [];
-  if (!state.deletedReminders) state.deletedReminders = [];
-  if (!state.deletedTrips) state.deletedTrips = [];
-  if (!state.deletedExpenses) state.deletedExpenses = [];
-  if (!state.exchangeRates) state.exchangeRates = {};
-  // Build currency selects from JS array
-  const curOpts = ALL_CURRENCIES.map(c => '<option value="'+c+'">'+c+' – '+(CUR_NAMES[c]||c)+'</option>').join('');
-  ['inp-trip-currency','edit-budget-currency','new-cur-select'].forEach(id => {
-    const el = document.getElementById(id); if (el) el.innerHTML = curOpts;
-  });
-  renderAll();
-  populatePackCatSelect();
-  populateExpCatSelects();
-  try { rescheduleAll(); } catch(e) {}
-  updateApiKeyIndicator();
-  if ('Notification' in window) notifPermission = Notification.permission;
+try { load(); } catch(e) { console.error('Load error:', e); }
+// Safe state defaults
+if (!state.activeTripId || typeof state.activeTripId !== 'object') state.activeTripId = {it:null, pk:null, bg:null, fl:null, docs:null};
+['it','pk','bg','fl','docs'].forEach(k => { if (!(k in state.activeTripId)) state.activeTripId[k] = null; });
+if (!state.moneyIn) state.moneyIn = {};
+if (!state.documents) state.documents = {};
+if (!state.loungeCards) state.loungeCards = [];
+if (!state.reminders) state.reminders = [];
+if (!state.customPackCats) state.customPackCats = [];
+if (!state.customExpCats) state.customExpCats = [];
+if (!state.deletedPackItems) state.deletedPackItems = [];
+if (!state.deletedReminders) state.deletedReminders = [];
+if (!state.deletedTrips) state.deletedTrips = [];
+if (!state.deletedExpenses) state.deletedExpenses = [];
+if (!state.exchangeRates) state.exchangeRates = {};
+// Build currency selects from JS array
+const curOpts = ALL_CURRENCIES.map(c => '<option value="'+c+'">'+c+' – '+(CUR_NAMES[c]||c)+'</option>').join('');
+['inp-trip-currency','edit-budget-currency','new-cur-select'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = curOpts;
+});
+renderAll();
+populatePackCatSelect();
+populateExpCatSelects();
+try { rescheduleAll(); } catch(e) {}
+updateApiKeyIndicator();
+if ('Notification' in window) notifPermission = Notification.permission;
 })();
 </script>
 </body>
