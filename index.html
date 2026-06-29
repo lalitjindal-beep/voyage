@@ -473,6 +473,10 @@
       <div class="budget-box"><div class="label">Spent</div><div class="amount" id="b-spent">—</div></div>
       <div class="budget-box ok"><div class="label">Left</div><div class="amount" id="b-left">—</div></div>
     </div>
+    <div id="b-cat-box" style="display:none;background:var(--sky-light);border:1.5px solid var(--sky);border-radius:14px;padding:12px 16px;margin-bottom:14px;align-items:center;justify-content:space-between;">
+      <div><div id="b-cat-label" style="font-size:11px;font-weight:700;color:var(--sky-dark);letter-spacing:.5px;text-transform:uppercase;margin-bottom:2px;"></div><div id="b-cat-count" style="font-size:11px;color:var(--muted);"></div></div>
+      <div id="b-cat-amount" style="font-size:22px;font-weight:800;color:var(--sky-dark);"></div>
+    </div>
     <div id="money-in-summary" style="display:none;"></div>
     <button onclick="openSheet('sheet-card-report')" style="width:100%;padding:10px 14px;background:linear-gradient(135deg,#1E2D3D,#2C3E50);color:white;border:none;border-radius:12px;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:14px;display:flex;align-items:center;justify-content:center;gap:8px;">💳 Card-wise Expense Report</button>
     <div class="chip-tabs" id="expense-filter-tabs">
@@ -1810,6 +1814,7 @@ function renderBudget() {
   const left = (trip.budget||0) - total;
   updateBudgetBoxes(trip.budget, total, left, cur);
   const catFiltered = activeExpenseFilter === 'All' ? expenses : expenses.filter(e => e.cat === activeExpenseFilter);
+  {const cb=document.getElementById('b-cat-box');if(cb){if(activeExpenseFilter!=='All'){const ct=catFiltered.reduce((s,e)=>s+(e.amountBase||e.amount),0),cp=total?Math.round((ct/total)*100):0;cb.style.display='flex';const cl=document.getElementById('b-cat-label');if(cl)cl.textContent=(CAT_ICONS[activeExpenseFilter]||'📌')+' '+activeExpenseFilter;const ca=document.getElementById('b-cat-amount');if(ca)ca.textContent=fmtCurrency(ct,cur);const cc=document.getElementById('b-cat-count');if(cc)cc.textContent=catFiltered.length+' item'+(catFiltered.length!==1?'s':'')+' · '+cp+'% of total';}else{cb.style.display='none';}}}
   // Search filter
   const q = (document.getElementById('exp-search')?.value || '').trim().toLowerCase();
   const filtered = q ? catFiltered.filter(e => e.name.toLowerCase().includes(q)) : catFiltered;
@@ -2163,11 +2168,14 @@ const CURRENCY_SYMBOLS = { USD:'$', EUR:'€', INR:'₹', GBP:'£', JPY:'¥', AE
 function fmtCurrency(amount, cur) {
   const sym = CURRENCY_SYMBOLS[cur] || cur + ' ';
   if (!amount && amount !== 0) return '—';
-  const n = parseFloat(amount);
-  const s = n % 1 === 0 ? n.toFixed(0) : n.toFixed(2).replace(/\.?0+$/, '');
-  const parts = s.split('.');
-  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  return sym + parts.join('.');
+  const n = Math.round(parseFloat(amount));
+  const s = n.toString();
+  // Indian number format: last 3, then groups of 2
+  if (s.length <= 3) return sym + s;
+  const last3 = s.slice(-3);
+  const rest = s.slice(0, -3);
+  const formatted = rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',') + ',' + last3;
+  return sym + formatted;
 }
 // ---- CUSTOM EXPENSE CATEGORIES ----
 const DEFAULT_EXP_CATS = ['Food','Flight','Taxi / Transport','Hotel','Activity','Shopping','Other'];
