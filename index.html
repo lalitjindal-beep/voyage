@@ -2583,22 +2583,123 @@ function exportBudgetExcel() {
   if (!trip) { showToast('Select a trip first'); return; }
   const expenses = state.expenses[trip.id] || [];
   if (!expenses.length) { showToast('No expenses to export'); return; }
-  showToast('Preparing Excel file…');
-  loadSheetJS(function(XLSX) {
-    try { _doExport(XLSX, trip, expenses); }
-    catch(e) { console.error(e); showToast('Export error: '+e.message); }
+  try { _doExport(trip, expenses); }
+  catch(e) { console.error(e); showToast('Export error: '+e.message); }
+}
+
+// ── Minimal styled XLSX engine (no external library) ──
+const XS = [
+  {fs:14,b:1,c:'1E3A5F',fl:null,a:'left'},
+  {fs:10,b:0,c:'555555',fl:null,a:'left'},
+  {fs:10,b:1,c:'FFFFFF',fl:'1E3A5F',a:'center',bd:1},
+  {fs:10,b:1,c:'FFFFFF',fl:'1E3A5F',a:'left',bd:1},
+  {fs:10,b:1,c:'333333',fl:'E3F2FD',a:'right',bd:1},
+  {fs:10,b:1,c:'333333',fl:'E3F2FD',a:'left',bd:1},
+  {fs:10,b:0,c:'333333',fl:'FFFFFF',a:'left',bd:1},
+  {fs:10,b:0,c:'333333',fl:'F0F4FF',a:'left',bd:1},
+  {fs:10,b:0,c:'333333',fl:'FFFFFF',a:'right',bd:1},
+  {fs:10,b:0,c:'333333',fl:'F0F4FF',a:'right',bd:1},
+  {fs:11,b:1,c:'FFFFFF',fl:'1E3A5F',a:'left',bd:1},
+  {fs:8,b:1,c:'555555',fl:'E3F2FD',a:'center',bd:1},
+  {fs:13,b:1,c:'1E3A5F',fl:'E3F2FD',a:'center',bd:1},
+  {fs:13,b:1,c:'1565C0',fl:'E3F2FD',a:'center',bd:1},
+  {fs:13,b:1,c:'2E7D32',fl:'E3F2FD',a:'center',bd:1},
+  {fs:13,b:1,c:'C62828',fl:'E3F2FD',a:'center',bd:1},
+  {fs:11,b:1,c:'FFFFFF',fl:'2E7D32',a:'left',bd:1},
+  {fs:10,b:1,c:'333333',fl:'F0F4FF',a:'left',bd:1},
+];
+// Style indices: 0=title 1=sub 2=hdr-c 3=hdr-l 4=tot-r 5=tot-l 6=r0 7=r1 8=r0n 9=r1n
+// 10=section 11=kpi-lbl 12=kpi-navy 13=kpi-blue 14=kpi-green 15=kpi-red 16=section-green 17=tot-l-green
+
+function _xEsc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function _xCol(n){let s='';n++;while(n>0){const r=(n-1)%26;s=String.fromCharCode(65+r)+s;n=Math.floor((n-1)/26);}return s;}
+function _xCrc32(buf){
+  let table=_xCrc32.t; if(!table){table=[];for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?(0xEDB88320^(c>>>1)):(c>>>1);table[n]=c;}_xCrc32.t=table;}
+  let crc=0^(-1);
+  for(let i=0;i<buf.length;i++) crc=(crc>>>8)^table[(crc^buf[i])&0xFF];
+  return (crc^(-1))>>>0;
+}
+function _xZip(files) {
+  const enc = s => new TextEncoder().encode(s);
+  const localParts=[], centralParts=[]; let offset=0;
+  function u16(v){return new Uint8Array([v&0xFF,(v>>8)&0xFF]);}
+  function u32(v){return new Uint8Array([v&0xFF,(v>>8)&0xFF,(v>>16)&0xFF,(v>>24)&0xFF]);}
+  function cat(...arrs){const tot=arrs.reduce((s,a)=>s+a.length,0);const out=new Uint8Array(tot);let o=0;arrs.forEach(a=>{out.set(a,o);o+=a.length;});return out;}
+  for (const name of Object.keys(files)) {
+    const data = files[name];
+    const nameBuf = enc(name);
+    const crc = _xCrc32(data);
+    const local = cat(
+      u32(0x04034b50), u16(20), u16(0), u16(0), u16(0), u16(0),
+      u32(crc), u32(data.length), u32(data.length),
+      u16(nameBuf.length), u16(0), nameBuf, data
+    );
+    localParts.push(local);
+    const central = cat(
+      u32(0x02014b50), u16(20), u16(20), u16(0), u16(0), u16(0), u16(0),
+      u32(crc), u32(data.length), u32(data.length),
+      u16(nameBuf.length), u16(0), u16(0), u16(0), u16(0), u32(0), u32(offset), nameBuf
+    );
+    centralParts.push(central);
+    offset += local.length;
+  }
+  const centralDir = cat(...centralParts);
+  const cdOffset = offset;
+  const eocd = cat(u32(0x06054b50), u16(0), u16(0), u16(Object.keys(files).length), u16(Object.keys(files).length), u32(centralDir.length), u32(cdOffset), u16(0));
+  return cat(...localParts, centralDir, eocd);
+}
+function _xStylesXML() {
+  const fontsXML = XS.map(s=>`<font><sz val="${s.fs}"/>${s.b?'<b/>':''}<color rgb="FF${s.c}"/><name val="Arial"/></font>`).join('');
+  const fillsXML = ['<fill><patternFill patternType="none"/></fill>','<fill><patternFill patternType="gray125"/></fill>']
+    .concat(XS.map(s=>s.fl?`<fill><patternFill patternType="solid"><fgColor rgb="FF${s.fl}"/><bgColor indexed="64"/></patternFill></fill>`:'<fill><patternFill patternType="none"/></fill>')).join('');
+  const borderThin='<border><left style="thin"><color rgb="FFCCCCCC"/></left><right style="thin"><color rgb="FFCCCCCC"/></right><top style="thin"><color rgb="FFCCCCCC"/></top><bottom style="thin"><color rgb="FFCCCCCC"/></bottom><diagonal/></border>';
+  const bordersXML = `<border><left/><right/><top/><bottom/><diagonal/></border>${borderThin}`;
+  const xfsXML = XS.map((s,i)=>{
+    const numFmt = s.nf ? ' numFmtId="164"' : '';
+    return `<xf${numFmt} fontId="${i}" fillId="${i+2}" borderId="${s.bd?1:0}" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="${s.a}" vertical="center"/></xf>`;
+  }).join('');
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0"/></numFmts><fonts count="${XS.length}">${fontsXML}</fonts><fills count="${XS.length+2}">${fillsXML}</fills><borders count="2">${bordersXML}</borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="${XS.length}">${xfsXML}</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+}
+function _xSheetXML(rows, colWidths, merges) {
+  let xml='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">';
+  if (colWidths) { xml+='<cols>'; colWidths.forEach((w,i)=>{xml+=`<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`;}); xml+='</cols>'; }
+  xml+='<sheetData>';
+  rows.forEach((row,ri)=>{
+    if(!row||row.every(c=>c==null)){xml+=`<row r="${ri+1}"/>`;return;}
+    xml+=`<row r="${ri+1}">`;
+    row.forEach((cd,ci)=>{
+      if(cd==null)return;
+      const ref=_xCol(ci)+(ri+1);
+      const sAttr=cd.s!=null?` s="${cd.s}"`:'';
+      if(cd.t==='n') xml+=`<c r="${ref}" t="n"${sAttr}><v>${cd.v}</v></c>`;
+      else xml+=`<c r="${ref}" t="str"${sAttr}><v>${_xEsc(cd.v)}</v></c>`;
+    });
+    xml+='</row>';
   });
+  xml+='</sheetData>';
+  if(merges&&merges.length){xml+='<mergeCells count="'+merges.length+'">';merges.forEach(m=>{xml+=`<mergeCell ref="${_xCol(m.c1)}${m.r1+1}:${_xCol(m.c2)}${m.r2+1}"/>`;});xml+='</mergeCells>';}
+  xml+='</worksheet>';
+  return xml;
 }
-function loadSheetJS(cb) {
-  if (window.XLSX) { cb(window.XLSX); return; }
-  const s = document.createElement('script');
-  s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-  s.onload = function() { cb(window.XLSX); };
-  s.onerror = function() { showToast('Need internet to load Excel engine (once only)'); };
-  document.head.appendChild(s);
+function _xWorkbookXML(names) {
+  let xml='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>';
+  names.forEach((nm,i)=>{xml+=`<sheet name="${_xEsc(nm)}" sheetId="${i+1}" r:id="rId${i+1}"/>`;});
+  return xml+'</sheets></workbook>';
 }
-function _doExport(XLSX, trip, expenses) {
-  const baseCur = trip.currency||'INR';
+function _xWbRelsXML(count) {
+  let xml='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">';
+  for(let i=0;i<count;i++) xml+=`<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i+1}.xml"/>`;
+  xml+=`<Relationship Id="rId${count+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`;
+  return xml+'</Relationships>';
+}
+function _xContentTypesXML(count) {
+  let xml='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>';
+  for(let i=0;i<count;i++) xml+=`<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`;
+  return xml+'</Types>';
+}
+
+function _doExport(trip, expenses) {
+  const baseCur=trip.currency||'INR';
   const moneyIn=(state.moneyIn?.[trip.id]||[]).reduce((s,x)=>s+x.amount,0);
   const total=expenses.reduce((s,e)=>s+(e.amountBase||e.amount),0);
   const budget=(trip.budget||0)+moneyIn;
@@ -2607,106 +2708,97 @@ function _doExport(XLSX, trip, expenses) {
   expenses.forEach(e=>{
     const a=e.amountBase||e.amount;
     catT[e.cat]=(catT[e.cat]||0)+a; catC[e.cat]=(catC[e.cat]||0)+1;
-    const pm=e.payMethod==='💳 Credit Card'&&e.cardName?e.cardName:(e.payMethod||'Cash');
+    const pm=e.payMethod==='💳 Credit Card'&&e.cardName?'CC: '+e.cardName:(e.payMethod||'Cash');
     pmT[pm]=(pmT[pm]||0)+a;
   });
   const catK=Object.keys(catT).sort((a,b)=>catT[b]-catT[a]);
   const sorted=[...expenses].sort((a,b)=>(a.date||'').localeCompare(b.date||''));
-  const wb=XLSX.utils.book_new();
+  const c=(v,s)=>({v:v==null?'':v,t:'str',s});
+  const n=(v,s)=>({v:Math.round(parseFloat(v)||0),t:'n',s});
 
-  // Build worksheet from cell objects directly (not aoa)
-  function makeWS(rows, colWidths) {
-    const ws={};
-    let maxR=0, maxC=0;
-    rows.forEach(function(row,ri){
-      row.forEach(function(cell,ci){
-        if(cell==null) return;
-        const ref=XLSX.utils.encode_cell({r:ri,c:ci});
-        if(typeof cell==='object'&&cell.t) { ws[ref]=cell; }
-        else if(typeof cell==='number') { ws[ref]={v:cell,t:'n'}; }
-        else { ws[ref]={v:String(cell||''),t:'s'}; }
-        maxR=Math.max(maxR,ri); maxC=Math.max(maxC,ci);
-      });
-    });
-    ws['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:maxR,c:maxC}});
-    if(colWidths) ws['!cols']=colWidths.map(w=>({wch:w}));
-    return ws;
-  }
-
-  function s(v) { return {v:String(v||''),t:'s'}; }  // string cell
-  function n(v) { return {v:Math.round(parseFloat(v)||0),t:'n'}; } // number cell
-  function p(v) { return {v:String(Math.round(parseFloat(v)||0))+'%',t:'s'}; } // pct
-
-  // ── Sheet 1: Dashboard ──
-  const rows1=[];
-  rows1.push([s('✈ VOYAGE — '+trip.dest+' Budget Report'),null,null,null,null]);
-  rows1.push([s((trip.start?fmt(trip.start):'')+' to '+(trip.end?fmt(trip.end):'')+'  |  Currency: '+baseCur),null,null,null,null]);
-  rows1.push([s('Exported: '+new Date().toLocaleDateString('en-IN')),null,null,null,null]);
-  rows1.push([null]);
-  rows1.push([s('── SUMMARY ──'),null,null,null,null]);
-  rows1.push([s('Total Budget'),n(budget),null,s('Total Spent'),n(total)]);
-  rows1.push([s('Money Received'),n(moneyIn),null,s('Remaining'),n(remaining)]);
-  rows1.push([s('Total Expenses'),n(expenses.length),null,s('% Used'),p(budget?total/budget*100:0)]);
-  rows1.push([null]);
-  rows1.push([s('── CATEGORY BREAKDOWN ──'),null,null,null,null]);
-  rows1.push([s('Category'),s('Amount ('+baseCur+')'),s('% Share'),s('Items'),s('Avg/Item')]);
-  catK.forEach(function(cat){
-    const a=catT[cat],cnt=catC[cat];
-    rows1.push([s((CAT_ICONS[cat]||'•')+' '+cat),n(a),p(total?a/total*100:0),n(cnt),n(cnt?a/cnt:0)]);
+  // Sheet 1: Dashboard
+  const d1=[];
+  d1.push([c('✈ VOYAGE — '+trip.dest+' Budget Report',0)]);
+  d1.push([c((trip.start?fmt(trip.start):'')+' → '+(trip.end?fmt(trip.end):'')+'  |  '+baseCur+'  |  '+new Date().toLocaleDateString('en-IN'),1)]);
+  d1.push([]);
+  d1.push([c('BUDGET',11),null,c('SPENT',11),null,c('REMAINING',11),null,c('EXPENSES',11)]);
+  d1.push([n(budget,12),null,n(total,total>budget?15:13),null,n(remaining,remaining>=0?14:15),null,n(expenses.length,12)]);
+  d1.push([]);
+  d1.push([c('CATEGORY BREAKDOWN',10),c('',10),c('',10),c('',10),c('',10),c('',10),c('',10)]);
+  d1.push([c('Category',3),c('Amount ('+baseCur+')',2),c('% Share',2),c('Items',2),c('Avg/Item',2),c('Biggest Expense',3),c('Biggest Amt',2)]);
+  catK.forEach((cat,i)=>{
+    const a=catT[cat],cnt=catC[cat],s=i%2?7:6,sn=i%2?9:8;
+    const big=[...expenses].filter(e=>e.cat===cat).sort((x,y)=>(y.amountBase||y.amount)-(x.amountBase||x.amount))[0];
+    d1.push([c((CAT_ICONS[cat]||'')+' '+cat,s),n(a,sn),c(total?(a/total*100).toFixed(1)+'%':'0%',sn),n(cnt,sn),n(cnt?a/cnt:0,sn),c(big?big.name:'',s),big?n(big.amountBase||big.amount,sn):c('',s)]);
   });
-  rows1.push([s('TOTAL'),n(total),s('100%'),n(expenses.length),n(expenses.length?total/expenses.length:0)]);
-  rows1.push([null]);
-  rows1.push([s('── PAYMENT METHOD ──'),null,null,null,null]);
-  rows1.push([s('Method / Card'),s('Amount ('+baseCur+')'),s('% Share'),null,null]);
-  Object.keys(pmT).sort((a,b)=>pmT[b]-pmT[a]).forEach(function(pm){
-    rows1.push([s(pm),n(pmT[pm]),p(total?pmT[pm]/total*100:0),null,null]);
+  d1.push([c('TOTAL',5),n(total,4),c('100%',4),n(expenses.length,4),n(expenses.length?total/expenses.length:0,4),c('',5),c('',4)]);
+  d1.push([]);
+  d1.push([c('PAYMENT METHOD',10),c('',10),c('',10)]);
+  d1.push([c('Method / Card',3),c('Amount',2),c('%',2)]);
+  Object.keys(pmT).sort((a,b)=>pmT[b]-pmT[a]).forEach((pm,i)=>{
+    const s=i%2?7:6,sn=i%2?9:8;
+    d1.push([c(pm,s),n(pmT[pm],sn),c(total?(pmT[pm]/total*100).toFixed(1)+'%':'0%',sn)]);
   });
   if(moneyIn>0){
-    rows1.push([null]);
-    rows1.push([s('── MONEY RECEIVED ──'),null,null,null,null]);
-    rows1.push([s('Description'),s('Amount'),s('Date'),null,null]);
-    (state.moneyIn[trip.id]||[]).forEach(function(x){
-      rows1.push([s(x.desc),n(x.amount),s(x.date?fmt(x.date):''),null,null]);
+    d1.push([]);
+    d1.push([c('MONEY RECEIVED',16),c('',16),c('',16)]);
+    d1.push([c('Description',3),c('Amount',2),c('Date',3)]);
+    (state.moneyIn[trip.id]||[]).forEach((x,i)=>{
+      const s=i%2?7:6;
+      d1.push([c(x.desc,s),n(x.amount,i%2?9:8),c(x.date?fmt(x.date):'',s)]);
     });
-    rows1.push([s('Total Received'),n(moneyIn),null,null,null]);
+    d1.push([c('Total Received',17),n(moneyIn,4),c('',5)]);
   }
-  const ws1=makeWS(rows1,[28,16,12,20,16]);
-  ws1['!merges']=[{s:{r:0,c:0},e:{r:0,c:4}},{s:{r:1,c:0},e:{r:1,c:4}},{s:{r:2,c:0},e:{r:2,c:4}}];
-  XLSX.utils.book_append_sheet(wb,ws1,'Dashboard');
+  const merges1=[{r1:0,c1:0,r2:0,c2:6},{r1:1,c1:0,r2:1,c2:6},{r1:3,c1:0,r2:3,c2:1},{r1:3,c1:2,r2:3,c2:3},{r1:3,c1:4,r2:3,c2:5},{r1:4,c1:0,r2:4,c2:1},{r1:4,c1:2,r2:4,c2:3},{r1:4,c1:4,r2:4,c2:5}];
 
-  // ── Sheet 2: All Expenses ──
-  const rows2=[[s('Date'),s('Description'),s('Category'),s('Payment Method'),s('Card'),s('Amount ('+baseCur+')'),s('Orig Amount'),s('Orig Currency'),s('Notes')]];
-  sorted.forEach(function(e){
-    const base=e.amountBase||e.amount;
-    rows2.push([s(e.date?fmt(e.date):''),s(e.name),s((CAT_ICONS[e.cat]||'')+' '+e.cat),s(e.payMethod||'Cash'),s(e.cardName||''),n(base),e.currency&&e.currency!==baseCur?n(e.amount):s(''),s(e.currency&&e.currency!==baseCur?e.currency:''),s(e.note||'')]);
+  // Sheet 2: Expenses
+  const d2=[[c('Date',3),c('Description',3),c('Category',3),c('Payment',3),c('Card',3),c('Amount ('+baseCur+')',2),c('Orig Amt',2),c('Orig Cur',3),c('Notes',3)]];
+  sorted.forEach((e,i)=>{
+    const s=i%2?7:6,sn=i%2?9:8,base=e.amountBase||e.amount;
+    const orig=e.currency&&e.currency!==baseCur?e.amount:null;
+    d2.push([c(e.date?fmt(e.date):'',s),c(e.name,s),c((CAT_ICONS[e.cat]||'')+' '+e.cat,s),c(e.payMethod||'Cash',s),c(e.cardName||'',s),n(base,sn),orig!=null?n(orig,sn):c('',s),c(e.currency&&e.currency!==baseCur?e.currency:'',s),c(e.note||'',s)]);
   });
-  rows2.push([s(''),s('TOTAL'),s(''),s(''),s(''),n(total),s(''),s(''),s('')]);
-  const ws2=makeWS(rows2,[12,30,18,18,14,14,12,10,22]);
-  ws2['!autofilter']={ref:'A1:I1'};
-  XLSX.utils.book_append_sheet(wb,ws2,'Expenses');
+  d2.push([c('',5),c('TOTAL',5),c('',5),c('',5),c('',5),n(total,4),c('',5),c('',5),c('',5)]);
 
-  // ── Sheet 3: Category Summary ──
-  const rows3=[[s('Category'),s('Amount ('+baseCur+')'),s('% Share'),s('Items'),s('Avg/Item'),s('Biggest Expense'),s('Biggest Amount')]];
-  catK.forEach(function(cat){
-    const a=catT[cat],cnt=catC[cat];
+  // Sheet 3: Summary
+  const d3=[[c('Category',3),c('Amount',2),c('% Share',2),c('Items',2),c('Avg/Item',2),c('Biggest Expense',3),c('Biggest Amount',2)]];
+  catK.forEach((cat,i)=>{
+    const a=catT[cat],cnt=catC[cat],s=i%2?7:6,sn=i%2?9:8;
     const big=[...expenses].filter(e=>e.cat===cat).sort((x,y)=>(y.amountBase||y.amount)-(x.amountBase||x.amount))[0];
-    rows3.push([s((CAT_ICONS[cat]||'•')+' '+cat),n(a),p(total?a/total*100:0),n(cnt),n(cnt?a/cnt:0),s(big?big.name:''),big?n(big.amountBase||big.amount):s('')]);
+    d3.push([c((CAT_ICONS[cat]||'')+' '+cat,s),n(a,sn),c(total?(a/total*100).toFixed(1)+'%':'0%',sn),n(cnt,sn),n(cnt?a/cnt:0,sn),c(big?big.name:'',s),big?n(big.amountBase||big.amount,sn):c('',s)]);
   });
-  rows3.push([s('GRAND TOTAL'),n(total),s('100%'),n(expenses.length),n(expenses.length?total/expenses.length:0),s(''),s('')]);
-  const ws3=makeWS(rows3,[24,16,12,10,14,30,16]);
-  XLSX.utils.book_append_sheet(wb,ws3,'Summary');
+  d3.push([c('GRAND TOTAL',5),n(total,4),c('100%',4),n(expenses.length,4),n(expenses.length?total/expenses.length:0,4),c('',5),c('',4)]);
 
-  const out=XLSX.write(wb,{bookType:'xlsx',type:'array'});
-  const blob=new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const sheetXMLs=[
+    _xSheetXML(d1,[26,15,12,18,14,24,14],merges1),
+    _xSheetXML(d2,[12,30,18,16,14,15,12,10,24]),
+    _xSheetXML(d3,[24,15,11,10,14,28,15]),
+  ];
+
+  const enc=s=>new TextEncoder().encode(s);
+  const files={
+    '[Content_Types].xml': enc(_xContentTypesXML(3)),
+    '_rels/.rels': enc('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'),
+    'xl/workbook.xml': enc(_xWorkbookXML(['Dashboard','Expenses','Summary'])),
+    'xl/_rels/workbook.xml.rels': enc(_xWbRelsXML(3)),
+    'xl/styles.xml': enc(_xStylesXML()),
+    'xl/worksheets/sheet1.xml': enc(sheetXMLs[0]),
+    'xl/worksheets/sheet2.xml': enc(sheetXMLs[1]),
+    'xl/worksheets/sheet3.xml': enc(sheetXMLs[2]),
+  };
+  const bytes=_xZip(files);
+  const blob=new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
   const url=URL.createObjectURL(blob);
   const now=new Date();
   const ds=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
-  const a2=document.createElement('a');
-  a2.href=url; a2.download='Budget-'+trip.dest.replace(/[^a-z0-9]/gi,'-')+'-'+ds+'.xlsx';
-  document.body.appendChild(a2); a2.click(); document.body.removeChild(a2);
+  const a=document.createElement('a');
+  a.href=url; a.download='Budget-'+trip.dest.replace(/[^a-z0-9]/gi,'-')+'-'+ds+'.xlsx';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
-  showToast('Excel exported ✅ — 3 sheets ready');
+  showToast('Excel exported ✅ — 3 sheets, styled');
 }
+
+
 
 function tryOpenApp(appUrl, webUrl) {
 // Try native app first via URL scheme, fall back to web
@@ -3416,8 +3508,9 @@ const totalTrips = state.trips.length;
 const activeTrip = state.trips.find(t => t.start && t.end && now >= new Date(t.start+'T12:00') && now <= new Date(t.end+'T12:00'));
 const upcomingTrip = state.trips.filter(t => t.start && new Date(t.start+'T12:00') > now).sort((a,b) => new Date(a.start) - new Date(b.start))[0];
 const summaryHtml = '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px;">' + '<div class="card" style="text-align:center;padding:12px 8px;"><div style="font-size:22px;font-weight:800;color:var(--sky);">'+totalTrips+'</div><div style="font-size:10px;color:var(--muted);font-weight:600;">TRIPS</div></div>' + '<div class="card" style="text-align:center;padding:12px 8px;"><div style="font-size:22px;font-weight:800;color:var(--green);">'+(activeTrip?'1':upcomingTrip?'0':'—')+'</div><div style="font-size:10px;color:var(--muted);font-weight:600;">'+(activeTrip?'ACTIVE':upcomingTrip?'UPCOMING':'STATUS')+'</div></div>' + '<div class="card" style="text-align:center;padding:12px 8px;"><div style="font-size:22px;font-weight:800;color:var(--sand);">'+allExp.length+'</div><div style="font-size:10px;color:var(--muted);font-weight:600;">EXPENSES</div></div>' + '</div>';
-const tripCards = state.trips.map(t => { const expenses = state.expenses[t.id] || []; const moneyIn = (state.moneyIn?.[t.id]||[]).reduce((s,x)=>s+x.amount,0); const spent = expenses.reduce((s,e) => s+(e.amountBase||e.amount), 0); const budget = (t.budget||0) + moneyIn; const remaining = budget - spent; const pct = budget ? Math.min(100, Math.round((spent/budget)*100)) : 0; const packItems = state.packingLists[t.id] || []; const packed = packItems.filter(i=>i.checked).length; const packPct = packItems.length ? Math.round((packed/packItems.length)*100) : 0; const acts = (state.itineraries[t.id]||[]).length; const flights = (state.flights[t.id]||[]).length; const hotels = (state.hotels[t.id]||[]).length; const docs = (state.documents?.[t.id]||[]).length; const daysLeft = t.end ? Math.ceil((new Date(t.end+'T12:00') - now)/864e5) : null; const isActive = t.start && t.end && now >= new Date(t.start+'T12:00') && now <= new Date(t.end+'T12:00'); const cur = t.currency || ''; const tripDays = (t.start&&t.end) ? Math.max(1,Math.round((new Date(t.end+'T12:00')-new Date(t.start+'T12:00'))/864e5)+1) : null; const avgPerDay = tripDays && spent ? spent/tripDays : null; const daysElapsed = t.start ? Math.max(0,Math.min(tripDays||0,Math.ceil((now-new Date(t.start+'T12:00'))/864e5))) : 0; const projectedTotal = daysElapsed > 0 && tripDays && avgPerDay ? avgPerDay * tripDays : null; const overUnder = projectedTotal && budget ? projectedTotal - budget : null; // Category breakdown const catTotals = {}; const payTotals = {}; expenses.forEach(e => { const amt = e.amountBase||e.amount; catTotals[e.cat] = (catTotals[e.cat]||0) + amt; const pm = e.payMethod==='💳 Credit Card'&&e.cardName ? '💳 '+e.cardName : (e.payMethod||'💵 Cash'); payTotals[pm] = (payTotals[pm]||0) + amt; }); const topCats = Object.keys(catTotals).sort((a,b)=>catTotals[b]-catTotals[a]); const biggest = expenses.length ? [...expenses].sort((a,b)=>(b.amountBase||b.amount)-(a.amountBase||a.amount))[0] : null; const expanded = dashExpandedTrips.has(t.id); const catBars = topCats.map(cat => { const amt = catTotals[cat], share = spent ? Math.round((amt/spent)*100) : 0; return '<div style="margin-bottom:8px;">' +'<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;">' +'<span style="color:var(--mid);">'+(CAT_ICONS[cat]||'📌')+' '+cat+'</span>' +'<span style="font-weight:600;color:var(--slate);">'+fmtCurrency(amt,cur)+' <span style="color:var(--muted);font-weight:400;">('+share+'%)</span></span></div>' +'<div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;">' +'<div style="height:100%;width:'+share+'%;background:var(--sky);border-radius:3px;"></div></div></div>'; }).join(''); const payRows = Object.keys(payTotals).sort((a,b)=>payTotals[b]-payTotals[a]).slice(0,5).map(pm => { const amt = payTotals[pm], share = spent ? Math.round((amt/spent)*100) : 0; return '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);">' +'<span style="font-size:12px;color:var(--mid);">'+pm+'</span>' +'<span style="font-size:12px;font-weight:700;">'+fmtCurrency(amt,cur)+' <span style="font-size:10px;color:var(--muted);font-weight:400;">('+share+'%)</span></span></div>'; }).join(''); const statBoxes = [ biggest ? { label:'BIGGEST EXPENSE', val: biggest.name, sub: fmtCurrency(biggest.amountBase||biggest.amount,cur), col:'var(--sky-dark)' } : null, avgPerDay ? { label:'AVG / DAY', val: fmtCurrency(avgPerDay,cur), sub: tripDays+'d trip', col:'var(--sky-dark)' } : null, projectedTotal ? { label:'PROJECTED TOTAL', val: fmtCurrency(projectedTotal,cur), sub: (overUnder>0?'⚠️ +'+fmtCurrency(overUnder,cur)+' over':'✅ '+fmtCurrency(Math.abs(overUnder||0),cur)+' under budget'), col: overUnder>0?'var(--red)':'var(--green)' } : null, moneyIn > 0 ? { label:'MONEY RECEIVED', val: '+'+fmtCurrency(moneyIn,cur), sub:'Added to budget', col:'var(--green)' } : null, ].filter(Boolean); const statHtml = statBoxes.length ? '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">' +statBoxes.map(b=>'<div style="background:var(--surface2);border-radius:10px;padding:10px;">' +'<div style="font-size:9px;color:var(--muted);font-weight:700;letter-spacing:.5px;">'+b.label+'</div>' +'<div style="font-size:13px;font-weight:800;color:'+b.col+';margin-top:3px;">'+b.val+'</div>' +'<div style="font-size:10px;color:var(--muted);">'+b.sub+'</div></div>').join('')+'</div>' : ''; const infoRow = '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px;">' +[['📅',acts,'Activities'],['✈️',flights,'Flights'],['🏨',hotels,'Hotels'],['📄',docs,'Docs']].map(([ic,n,lb])=> '<div style="background:var(--surface2);border-radius:10px;padding:8px 4px;text-align:center;">' +'<div style="font-size:16px;font-weight:800;color:var(--sky);">'+n+'</div>' +'<div style="font-size:9px;color:var(--muted);font-weight:600;">'+lb+'</div></div>').join('')+'</div>'; const analysisHtml = !expenses.length ? '<div style="font-size:12px;color:var(--muted);padding:8px 0;">No expenses logged yet</div>' : catBars +(payRows ? '<div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.5px;margin:12px 0 6px;">BY PAYMENT METHOD</div>'+payRows : '') + statHtml; return '<div class="card" style="margin-bottom:14px;">' +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">' +'<span style="font-size:28px;">'+t.emoji+'</span>' +'<div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:16px;">'+t.dest+'</div>' +'<div style="font-size:12px;color:var(--muted);">'+(t.start?fmt(t.start):'')+(t.end?' → '+fmt(t.end):'')+'</div></div>' +(isActive?'<span style="background:var(--green);color:white;border-radius:8px;padding:3px 8px;font-size:11px;font-weight:700;flex-shrink:0;">ACTIVE</span>' :daysLeft>0?'<span style="background:var(--sky-light);color:var(--sky-dark);border-radius:8px;padding:3px 8px;font-size:11px;font-weight:600;flex-shrink:0;">In '+daysLeft+'d</span>':'') +'</div>' + infoRow +'<div style="margin-bottom:8px;">' +'<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px;"><span>💰 Budget</span><span>'+fmtCurrency(spent,cur)+' / '+fmtCurrency(budget,cur)+(remaining<0?'<span style="color:var(--red);font-weight:700;">Over budget</span>':'<span style="color:var(--green);">'+fmtCurrency(remaining,cur)+' left</span>')+'</span></div>' +'<div style="height:7px;background:var(--border);border-radius:4px;overflow:hidden;"><div style="height:100%;width:'+pct+'%;background:'+( pct>100?'var(--red)':pct>80?'var(--sand)':'var(--sky)')+';border-radius:4px;transition:width .4s;"></div></div></div>' +'<div style="margin-bottom:8px;">' +'<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px;"><span>🧳 Packing</span><span>'+packed+'/'+packItems.length+' packed</span></div>' +'<div style="height:7px;background:var(--border);border-radius:4px;overflow:hidden;"><div style="height:100%;width:'+packPct+'%;background:var(--sand);border-radius:4px;transition:width .4s;"></div></div></div>' +'<div onclick="toggleDashAnalysis(this.dataset.id)" data-id="'+t.id+'" style="display:flex;align-items:center;justify-content:center;gap:5px;padding:9px 0 2px;cursor:pointer;border-top:1px solid var(--border);margin-top:6px;">' +'<span style="font-size:12px;font-weight:700;color:var(--sky);">'+(expanded?'▲ Hide':'▼ Spending Analysis')+'</span></div>' +(expanded?'<div style="margin-top:10px;">'+analysisHtml+'</div>':'') +'</div>';
-}).join('');
+const tripCards = state.trips.map(t => { try { return _buildTripCard(t, now); } catch(e) { console.error('Trip card error:', t.dest, e); return ''; } }).join('');
+function _buildTripCard(t, now) { const expenses = state.expenses[t.id] || []; const moneyIn = (state.moneyIn?.[t.id]||[]).reduce((s,x)=>s+x.amount,0); const spent = expenses.reduce((s,e) => s+(e.amountBase||e.amount), 0); const budget = (t.budget||0) + moneyIn; const remaining = budget - spent; const pct = budget ? Math.min(100, Math.round((spent/budget)*100)) : 0; const packItems = state.packingLists[t.id] || []; const packed = packItems.filter(i=>i.checked).length; const packPct = packItems.length ? Math.round((packed/packItems.length)*100) : 0; const acts = (state.itineraries[t.id]||[]).length; const flights = (state.flights[t.id]||[]).length; const hotels = (state.hotels[t.id]||[]).length; const docs = (state.documents?.[t.id]||[]).length; const daysLeft = t.end ? Math.ceil((new Date(t.end+'T12:00') - now)/864e5) : null; const isActive = t.start && t.end && now >= new Date(t.start+'T12:00') && now <= new Date(t.end+'T12:00'); const cur = t.currency || ''; const tripDays = (t.start&&t.end) ? Math.max(1,Math.round((new Date(t.end+'T12:00')-new Date(t.start+'T12:00'))/864e5)+1) : null; const avgPerDay = tripDays && spent ? spent/tripDays : null; const daysElapsed = t.start ? Math.max(0,Math.min(tripDays||0,Math.ceil((now-new Date(t.start+'T12:00'))/864e5))) : 0; const projectedTotal = daysElapsed > 0 && tripDays && avgPerDay ? avgPerDay * tripDays : null; const overUnder = projectedTotal && budget ? projectedTotal - budget : null; // Category breakdown const catTotals = {}; const payTotals = {}; expenses.forEach(e => { const amt = e.amountBase||e.amount; catTotals[e.cat] = (catTotals[e.cat]||0) + amt; const pm = e.payMethod==='💳 Credit Card'&&e.cardName ? '💳 '+e.cardName : (e.payMethod||'💵 Cash'); payTotals[pm] = (payTotals[pm]||0) + amt; }); const topCats = Object.keys(catTotals).sort((a,b)=>catTotals[b]-catTotals[a]); const biggest = expenses.length ? [...expenses].sort((a,b)=>(b.amountBase||b.amount)-(a.amountBase||a.amount))[0] : null; const expanded = dashExpandedTrips.has(t.id); const catBars = topCats.map(cat => { const amt = catTotals[cat], share = spent ? Math.round((amt/spent)*100) : 0; return '<div style="margin-bottom:8px;">' +'<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;">' +'<span style="color:var(--mid);">'+(CAT_ICONS[cat]||'📌')+' '+cat+'</span>' +'<span style="font-weight:600;color:var(--slate);">'+fmtCurrency(amt,cur)+' <span style="color:var(--muted);font-weight:400;">('+share+'%)</span></span></div>' +'<div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;">' +'<div style="height:100%;width:'+share+'%;background:var(--sky);border-radius:3px;"></div></div></div>'; }).join(''); const payRows = Object.keys(payTotals).sort((a,b)=>payTotals[b]-payTotals[a]).slice(0,5).map(pm => { const amt = payTotals[pm], share = spent ? Math.round((amt/spent)*100) : 0; return '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);">' +'<span style="font-size:12px;color:var(--mid);">'+pm+'</span>' +'<span style="font-size:12px;font-weight:700;">'+fmtCurrency(amt,cur)+' <span style="font-size:10px;color:var(--muted);font-weight:400;">('+share+'%)</span></span></div>'; }).join(''); const statBoxes = [ biggest ? { label:'BIGGEST EXPENSE', val: biggest.name, sub: fmtCurrency(biggest.amountBase||biggest.amount,cur), col:'var(--sky-dark)' } : null, avgPerDay ? { label:'AVG / DAY', val: fmtCurrency(avgPerDay,cur), sub: tripDays+'d trip', col:'var(--sky-dark)' } : null, projectedTotal ? { label:'PROJECTED TOTAL', val: fmtCurrency(projectedTotal,cur), sub: (overUnder>0?'⚠️ +'+fmtCurrency(overUnder,cur)+' over':'✅ '+fmtCurrency(Math.abs(overUnder||0),cur)+' under budget'), col: overUnder>0?'var(--red)':'var(--green)' } : null, moneyIn > 0 ? { label:'MONEY RECEIVED', val: '+'+fmtCurrency(moneyIn,cur), sub:'Added to budget', col:'var(--green)' } : null, ].filter(Boolean); const statHtml = statBoxes.length ? '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">' +statBoxes.map(b=>'<div style="background:var(--surface2);border-radius:10px;padding:10px;">' +'<div style="font-size:9px;color:var(--muted);font-weight:700;letter-spacing:.5px;">'+b.label+'</div>' +'<div style="font-size:13px;font-weight:800;color:'+b.col+';margin-top:3px;">'+b.val+'</div>' +'<div style="font-size:10px;color:var(--muted);">'+b.sub+'</div></div>').join('')+'</div>' : ''; const infoRow = '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px;">' +[['📅',acts,'Activities'],['✈️',flights,'Flights'],['🏨',hotels,'Hotels'],['📄',docs,'Docs']].map(([ic,n,lb])=> '<div style="background:var(--surface2);border-radius:10px;padding:8px 4px;text-align:center;">' +'<div style="font-size:16px;font-weight:800;color:var(--sky);">'+n+'</div>' +'<div style="font-size:9px;color:var(--muted);font-weight:600;">'+lb+'</div></div>').join('')+'</div>'; const analysisHtml = !expenses.length ? '<div style="font-size:12px;color:var(--muted);padding:8px 0;">No expenses logged yet</div>' : catBars +(payRows ? '<div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.5px;margin:12px 0 6px;">BY PAYMENT METHOD</div>'+payRows : '') + statHtml; return '<div class="card" style="margin-bottom:14px;">' +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">' +'<span style="font-size:28px;">'+t.emoji+'</span>' +'<div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:16px;">'+t.dest+'</div>' +'<div style="font-size:12px;color:var(--muted);">'+(t.start?fmt(t.start):'')+(t.end?' → '+fmt(t.end):'')+'</div></div>' +(isActive?'<span style="background:var(--green);color:white;border-radius:8px;padding:3px 8px;font-size:11px;font-weight:700;flex-shrink:0;">ACTIVE</span>' :daysLeft>0?'<span style="background:var(--sky-light);color:var(--sky-dark);border-radius:8px;padding:3px 8px;font-size:11px;font-weight:600;flex-shrink:0;">In '+daysLeft+'d</span>':'') +'</div>' + infoRow +'<div style="margin-bottom:8px;">' +'<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px;"><span>💰 Budget</span><span>'+fmtCurrency(spent,cur)+' / '+fmtCurrency(budget,cur)+(remaining<0?'<span style="color:var(--red);font-weight:700;">Over budget</span>':'<span style="color:var(--green);">'+fmtCurrency(remaining,cur)+' left</span>')+'</span></div>' +'<div style="height:7px;background:var(--border);border-radius:4px;overflow:hidden;"><div style="height:100%;width:'+pct+'%;background:'+( pct>100?'var(--red)':pct>80?'var(--sand)':'var(--sky)')+';border-radius:4px;transition:width .4s;"></div></div></div>' +'<div style="margin-bottom:8px;">' +'<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px;"><span>🧳 Packing</span><span>'+packed+'/'+packItems.length+' packed</span></div>' +'<div style="height:7px;background:var(--border);border-radius:4px;overflow:hidden;"><div style="height:100%;width:'+packPct+'%;background:var(--sand);border-radius:4px;transition:width .4s;"></div></div></div>' +'<div onclick="toggleDashAnalysis(this.dataset.id)" data-id="'+t.id+'" style="display:flex;align-items:center;justify-content:center;gap:5px;padding:9px 0 2px;cursor:pointer;border-top:1px solid var(--border);margin-top:6px;">' +'<span style="font-size:12px;font-weight:700;color:var(--sky);">'+(expanded?'▲ Hide':'▼ Spending Analysis')+'</span></div>' +(expanded?'<div style="margin-top:10px;">'+analysisHtml+'</div>':'') +'</div>';
+}
 // Upcoming reminders
 const pending = (state.reminders||[]).filter(r=>!r.done&&r.datetime).sort((a,b)=>a.datetime.localeCompare(b.datetime)).slice(0,3);
 const remHtml = pending.length ? '<div class="section-label" style="margin-top:4px;">⏰ Upcoming Reminders</div>' + pending.map(r => { const due = new Date(r.datetime).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}); return '<div class="card" style="display:flex;gap:10px;align-items:center;margin-bottom:8px;padding:12px;">' +'<span style="font-size:20px;">'+(REM_CAT_ICONS[r.cat]||'📌')+'</span>' +'<div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:600;color:var(--slate);">'+r.title+'</div>' +'<div style="font-size:11px;color:var(--muted);">'+due+'</div></div>' +'<button onclick="toggleReminder(this.dataset.id)" data-id="'+r.id+'" style="background:var(--green-light);color:var(--green);border:1px solid var(--green);border-radius:8px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;">Done</button>' +'</div>'; }).join('') : '';
