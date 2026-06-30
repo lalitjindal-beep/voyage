@@ -473,6 +473,7 @@
       <div class="budget-box"><div class="label">Spent</div><div class="amount" id="b-spent">—</div></div>
       <div class="budget-box ok"><div class="label">Left</div><div class="amount" id="b-left">—</div></div>
     </div>
+    <div id="b-pace-alert" style="display:none;"></div>
     <div id="b-cat-box" style="display:none;background:var(--sky-light);border:1.5px solid var(--sky);border-radius:14px;padding:12px 16px;margin-bottom:14px;align-items:center;justify-content:space-between;">
       <div><div id="b-cat-label" style="font-size:11px;font-weight:700;color:var(--sky-dark);letter-spacing:.5px;text-transform:uppercase;margin-bottom:2px;"></div><div id="b-cat-count" style="font-size:11px;color:var(--muted);"></div></div>
       <div id="b-cat-amount" style="font-size:22px;font-weight:800;color:var(--sky-dark);"></div>
@@ -1813,6 +1814,24 @@ function renderBudget() {
   const total = expenses.reduce((s,e) => s + (e.amountBase ?? e.amount), 0);
   const left = (trip.budget||0) - total;
   updateBudgetBoxes(trip.budget, total, left, cur);
+  const paceEl = document.getElementById('b-pace-alert');
+  if (paceEl) {
+    if (trip.start && trip.end && trip.budget) {
+      const tStart = new Date(trip.start+'T12:00'), tEnd = new Date(trip.end+'T12:00'), now2 = new Date();
+      const totalDays = Math.max(1, Math.round((tEnd-tStart)/864e5)+1);
+      const elapsedDays = Math.max(0, Math.min(totalDays, Math.ceil((now2-tStart)/864e5)));
+      const pctDaysPassed = elapsedDays/totalDays;
+      const pctBudgetUsed = total/trip.budget;
+      if (elapsedDays > 0 && elapsedDays < totalDays && pctBudgetUsed > pctDaysPassed + 0.15) {
+        paceEl.style.display = 'flex';
+        paceEl.style.cssText = 'display:flex;align-items:center;gap:8px;background:var(--sand-light);border:1.5px solid var(--sand);border-radius:12px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#7a5c00;';
+        paceEl.innerHTML = '⚡ <b>Spending faster than planned</b> — '+Math.round(pctBudgetUsed*100)+'% of budget used but only '+Math.round(pctDaysPassed*100)+'% of trip days passed';
+      } else if (elapsedDays > 0 && elapsedDays < totalDays && pctBudgetUsed < pctDaysPassed - 0.15) {
+        paceEl.style.cssText = 'display:flex;align-items:center;gap:8px;background:var(--green-light);border:1.5px solid var(--green);border-radius:12px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#1a5c35;';
+        paceEl.innerHTML = '✅ <b>On track!</b> — '+Math.round(pctBudgetUsed*100)+'% of budget used, '+Math.round(pctDaysPassed*100)+'% of trip days passed';
+      } else { paceEl.style.display = 'none'; }
+    } else { paceEl.style.display = 'none'; }
+  }
   const catFiltered = activeExpenseFilter === 'All' ? expenses : expenses.filter(e => e.cat === activeExpenseFilter);
   {const cb=document.getElementById('b-cat-box');if(cb){if(activeExpenseFilter!=='All'){const ct=catFiltered.reduce((s,e)=>s+(e.amountBase||e.amount),0),cp=total?Math.round((ct/total)*100):0;cb.style.display='flex';const cl=document.getElementById('b-cat-label');if(cl)cl.textContent=(CAT_ICONS[activeExpenseFilter]||'📌')+' '+activeExpenseFilter;const ca=document.getElementById('b-cat-amount');if(ca)ca.textContent=fmtCurrency(ct,cur);const cc=document.getElementById('b-cat-count');if(cc)cc.textContent=catFiltered.length+' item'+(catFiltered.length!==1?'s':'')+' · '+cp+'% of total';}else{cb.style.display='none';}}}
   // Search filter
@@ -1929,9 +1948,28 @@ function checkDuplicateExpense(val) {
     warn.style.display = 'block';
     warn.innerHTML = `⚠️ Similar expense${matches.length > 1 ? 's' : ''} already logged:<br>` +
       matches.map(m => `&nbsp;&nbsp;• <b>${m.name}</b> <span style="color:#a07820;">(${fmtCurrency(m.amount, m.currency || trip.currency)} · ${m.cat})</span>`).join('<br>');
-  } else {
-    warn.style.display = 'none';
+    return;
   }
+  // Historical price memory: same destination, past trips, similar category/word match
+  const sameCity = state.trips.filter(t => t.id !== trip.id && t.dest && trip.dest && t.dest.toLowerCase() === trip.dest.toLowerCase());
+  if (sameCity.length) {
+    const histMatches = [];
+    sameCity.forEach(t => {
+      (state.expenses[t.id]||[]).forEach(e => {
+        const words = q.split(/\s+/).filter(w=>w.length>2);
+        if (words.some(w => e.name.toLowerCase().includes(w))) histMatches.push(e);
+      });
+    });
+    if (histMatches.length) {
+      const avg = histMatches.reduce((s,e)=>s+(e.amountBase||e.amount),0)/histMatches.length;
+      warn.style.display = 'block';
+      warn.style.background = 'var(--sky-light)'; warn.style.borderColor = 'var(--sky)'; warn.style.color = 'var(--sky-dark)';
+      warn.innerHTML = `💡 Last time in ${trip.dest}, similar items averaged <b>${fmtCurrency(avg, trip.currency)}</b> (${histMatches.length} record${histMatches.length>1?'s':''})`;
+      return;
+    }
+  }
+  warn.style.display = 'none';
+  warn.style.background = ''; warn.style.borderColor = ''; warn.style.color = '';
 }
 // ---- MULTI-ITEM EXPENSE ROWS ----
 let expRowCount = 0;
@@ -3131,7 +3169,40 @@ function importData(event) {
 const file = event.target.files[0];
 if (!file) return;
 const reader = new FileReader();
-reader.onload = function(e) { try { const parsed = JSON.parse(e.target.result); if (!parsed.trips || !Array.isArray(parsed.trips)) { showToast('Invalid backup file'); return; } state = { ...state, ...parsed }; save(); renderAll(); showToast(`Restored ${parsed.trips.length} trip(s) ✅`); } catch(err) { showToast('Failed to read file'); }
+reader.onload = function(e) {
+  try {
+    const parsed = JSON.parse(e.target.result);
+    if (!parsed.trips || !Array.isArray(parsed.trips)) { showToast('Invalid backup file'); return; }
+    if (state.trips.length === 0) { state = { ...state, ...parsed }; save(); renderAll(); showToast(`Restored ${parsed.trips.length} trip(s) ✅`); event.target.value=''; return; }
+    // Smart merge: existing trips kept, new trips added, matching trips merge expenses/items by id
+    let added=0, merged=0;
+    const existingIds = new Set(state.trips.map(t=>t.id));
+    parsed.trips.forEach(pt => {
+      if (!existingIds.has(pt.id)) {
+        state.trips.push(pt);
+        state.itineraries[pt.id] = parsed.itineraries?.[pt.id] || [];
+        state.packingLists[pt.id] = parsed.packingLists?.[pt.id] || [];
+        state.expenses[pt.id] = parsed.expenses?.[pt.id] || [];
+        state.flights[pt.id] = parsed.flights?.[pt.id] || [];
+        state.hotels[pt.id] = parsed.hotels?.[pt.id] || [];
+        if (parsed.documents?.[pt.id]) state.documents[pt.id] = parsed.documents[pt.id];
+        if (parsed.moneyIn?.[pt.id]) state.moneyIn[pt.id] = parsed.moneyIn[pt.id];
+        added++;
+      } else {
+        // Merge expenses/packing/itinerary by id, skip duplicates
+        ['expenses','itineraries','packingLists','flights','hotels'].forEach(key => {
+          const incoming = parsed[key]?.[pt.id] || [];
+          const existing = state[key][pt.id] || [];
+          const existingIdSet = new Set(existing.map(x=>x.id));
+          incoming.forEach(item => { if (!existingIdSet.has(item.id)) { existing.push(item); merged++; } });
+          state[key][pt.id] = existing;
+        });
+      }
+    });
+    (parsed.reminders||[]).forEach(r => { if (!state.reminders.find(x=>x.id===r.id)) state.reminders.push(r); });
+    save(); renderAll();
+    showToast(added||merged ? `Merged: ${added} new trip(s), ${merged} new item(s) ✅` : 'Already up to date');
+  } catch(err) { showToast('Failed to read file'); }
 };
 reader.readAsText(file);
 event.target.value = '';
@@ -3147,7 +3218,21 @@ if (!trip) { container.innerHTML = ''; return; }
 const docs = state.documents[trip.id] || [];
 if (!docs.length) { container.innerHTML = `<div style="color:var(--muted);font-size:13px;padding:8px 0;">No documents yet</div>`; return; }
 const now = new Date();
-container.innerHTML = docs.map(d => { const expiry = d.expiry ? new Date(d.expiry+'T12:00') : null; const expired = expiry && expiry < now; const expiringSoon = expiry && !expired && (expiry - now) < 30*24*60*60*1000; return `<div class="card" style="display:flex;gap:12px;align-items:flex-start;margin-bottom:8px;"> <div style="font-size:24px;width:36px;text-align:center;">${d.type.split(' ')[0]}</div> <div style="flex:1;"> <div style="font-weight:600;font-size:14px;">${d.name}</div> <div style="font-size:12px;color:var(--muted);">${d.type}</div> ${d.number?`<div style="font-size:12px;font-weight:600;color:var(--slate);margin-top:2px;font-family:monospace;">${d.number}</div>`:''} ${d.expiry?`<div style="font-size:11px;margin-top:3px;color:${expired?'var(--red)':expiringSoon?'var(--sand)':'var(--green)'};"> ${expired?'⚠️ Expired':'✓ Valid until'} ${fmt(d.expiry)}</div>`:''} ${d.notes?`<div style="font-size:11px;color:var(--muted);margin-top:2px;">${d.notes}</div>`:''} </div> <span style="cursor:pointer;color:var(--sky);font-size:16px;" onclick="editDoc('${trip.id}','${d.id}')">✏️</span> </div>`;
+let warnBanner = '';
+if (trip.end) {
+  const tripEnd = new Date(trip.end+'T12:00');
+  const sixMonthsAfter = new Date(tripEnd); sixMonthsAfter.setMonth(sixMonthsAfter.getMonth()+6);
+  const passport = docs.find(d => d.type && d.type.includes('Passport') && d.expiry);
+  if (passport) {
+    const pExp = new Date(passport.expiry+'T12:00');
+    if (pExp < tripEnd) {
+      warnBanner = `<div style="background:var(--red-light);border:1.5px solid var(--red);border-radius:12px;padding:12px 14px;margin-bottom:12px;font-size:12px;color:#7a1818;line-height:1.5;">🚨 <b>Passport expires before trip ends!</b><br>Valid until ${fmt(passport.expiry)}, but trip ends ${fmt(trip.end)}. Renew immediately.</div>`;
+    } else if (pExp < sixMonthsAfter) {
+      warnBanner = `<div style="background:var(--sand-light);border:1.5px solid var(--sand);border-radius:12px;padding:12px 14px;margin-bottom:12px;font-size:12px;color:#7a5c00;line-height:1.5;">⚠️ <b>Passport validity under 6 months</b> after trip ends (expires ${fmt(passport.expiry)}). Many countries require 6-month validity for entry — check visa requirements.</div>`;
+    }
+  }
+}
+container.innerHTML = warnBanner + docs.map(d => { const expiry = d.expiry ? new Date(d.expiry+'T12:00') : null; const expired = expiry && expiry < now; const expiringSoon = expiry && !expired && (expiry - now) < 30*24*60*60*1000; return `<div class="card" style="display:flex;gap:12px;align-items:flex-start;margin-bottom:8px;"> <div style="font-size:24px;width:36px;text-align:center;">${d.type.split(' ')[0]}</div> <div style="flex:1;"> <div style="font-weight:600;font-size:14px;">${d.name}</div> <div style="font-size:12px;color:var(--muted);">${d.type}</div> ${d.number?`<div style="font-size:12px;font-weight:600;color:var(--slate);margin-top:2px;font-family:monospace;">${d.number}</div>`:''} ${d.expiry?`<div style="font-size:11px;margin-top:3px;color:${expired?'var(--red)':expiringSoon?'var(--sand)':'var(--green)'};"> ${expired?'⚠️ Expired':'✓ Valid until'} ${fmt(d.expiry)}</div>`:''} ${d.notes?`<div style="font-size:11px;color:var(--muted);margin-top:2px;">${d.notes}</div>`:''} </div> <span style="cursor:pointer;color:var(--sky);font-size:16px;" onclick="editDoc('${trip.id}','${d.id}')">✏️</span> </div>`;
 }).join('');
 }
 function saveDoc() {
