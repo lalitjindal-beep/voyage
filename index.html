@@ -2583,206 +2583,131 @@ function exportBudgetExcel() {
   if (!trip) { showToast('Select a trip first'); return; }
   const expenses = state.expenses[trip.id] || [];
   if (!expenses.length) { showToast('No expenses to export'); return; }
-  try {
-    const wb = buildWorkbook(trip, expenses);
-    const bytes = writeXLSX(wb);
-    const blob = new Blob([bytes], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-    const url = URL.createObjectURL(blob);
-    const now = new Date();
-    const ds = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'Budget-'+trip.dest.replace(/[^a-z0-9]/gi,'-')+'-'+ds+'.xlsx';
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    showToast('Excel file exported ✅');
-  } catch(e) { console.error(e); showToast('Export failed: '+e.message); }
+  showToast('Preparing Excel file…');
+  loadSheetJS(function(XLSX) {
+    try { _doExport(XLSX, trip, expenses); }
+    catch(e) { console.error(e); showToast('Export error: '+e.message); }
+  });
 }
-function buildWorkbook(trip, expenses) {
-  const baseCur = trip.currency || 'USD';
-  const moneyIn = (state.moneyIn?.[trip.id]||[]).reduce((s,x)=>s+x.amount,0);
-  const total = expenses.reduce((s,e)=>s+(e.amountBase||e.amount),0);
-  const budget = (trip.budget||0)+moneyIn;
-  const remaining = budget - total;
-  const catTotals={}, catCounts={}, pmTotals={};
+function loadSheetJS(cb) {
+  if (window.XLSX) { cb(window.XLSX); return; }
+  const s = document.createElement('script');
+  s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+  s.onload = function() { cb(window.XLSX); };
+  s.onerror = function() { showToast('Need internet to load Excel engine (once only)'); };
+  document.head.appendChild(s);
+}
+function _doExport(XLSX, trip, expenses) {
+  const baseCur = trip.currency||'INR';
+  const moneyIn=(state.moneyIn?.[trip.id]||[]).reduce((s,x)=>s+x.amount,0);
+  const total=expenses.reduce((s,e)=>s+(e.amountBase||e.amount),0);
+  const budget=(trip.budget||0)+moneyIn;
+  const remaining=budget-total;
+  const catT={},catC={},pmT={};
   expenses.forEach(e=>{
     const a=e.amountBase||e.amount;
-    catTotals[e.cat]=(catTotals[e.cat]||0)+a; catCounts[e.cat]=(catCounts[e.cat]||0)+1;
+    catT[e.cat]=(catT[e.cat]||0)+a; catC[e.cat]=(catC[e.cat]||0)+1;
     const pm=e.payMethod==='💳 Credit Card'&&e.cardName?e.cardName:(e.payMethod||'Cash');
-    pmTotals[pm]=(pmTotals[pm]||0)+a;
+    pmT[pm]=(pmT[pm]||0)+a;
   });
-  const catKeys=Object.keys(catTotals).sort((a,b)=>catTotals[b]-catTotals[a]);
+  const catK=Object.keys(catT).sort((a,b)=>catT[b]-catT[a]);
   const sorted=[...expenses].sort((a,b)=>(a.date||'').localeCompare(b.date||''));
-  const n=v=>Math.round(parseFloat(v)||0);
-  // Sheet 1: Dashboard
-  const d1=[];
-  d1.push([{v:'VOYAGE BUDGET REPORT',t:'s',s:'title'},{},{},{},{}]);
-  d1.push([{v:trip.dest+(trip.start?' | '+fmt(trip.start):'')+( trip.end?' to '+fmt(trip.end):''),t:'s',s:'subtitle'},{},{},{},{}]);
-  d1.push([]);
-  d1.push([{v:'SUMMARY',t:'s',s:'hdr'},{v:'',s:'hdr'},{v:'',s:'hdr'},{v:'',s:'hdr'},{v:'',s:'hdr'}]);
-  d1.push([{v:'Total Budget',t:'s',s:'lbl'},{v:n(budget),t:'n',s:'amt'},{v:'',t:'s'},{v:'Total Spent',t:'s',s:'lbl'},{v:n(total),t:'n',s:'amt'}]);
-  d1.push([{v:'Money Received',t:'s',s:'lbl'},{v:n(moneyIn),t:'n',s:'amt'},{v:'',t:'s'},{v:'Remaining',t:'s',s:'lbl'},{v:n(remaining),t:'n',s:remaining>=0?'amt_g':'amt_r'}]);
-  d1.push([{v:'# Expenses',t:'s',s:'lbl'},{v:expenses.length,t:'n',s:'num'},{v:'',t:'s'},{v:'% Used',t:'s',s:'lbl'},{v:budget?+(total/budget*100).toFixed(1):0,t:'n',s:'pct'}]);
-  d1.push([]);
-  d1.push([{v:'CATEGORY BREAKDOWN',t:'s',s:'hdr'},{v:'',s:'hdr'},{v:'',s:'hdr'},{v:'',s:'hdr'},{v:'',s:'hdr'}]);
-  d1.push([{v:'Category',t:'s',s:'col_h'},{v:'Amount ('+baseCur+')',t:'s',s:'col_h'},{v:'% Share',t:'s',s:'col_h'},{v:'Items',t:'s',s:'col_h'},{v:'Avg/Item',t:'s',s:'col_h'}]);
-  catKeys.forEach((cat,i)=>{const a=catTotals[cat],cnt=catCounts[cat];d1.push([{v:cat,t:'s',s:i%2?'r1':'r0'},{v:n(a),t:'n',s:i%2?'r1n':'r0n'},{v:budget?+(a/budget*100).toFixed(1):0,t:'n',s:i%2?'r1p':'r0p'},{v:cnt,t:'n',s:i%2?'r1':'r0'},{v:n(cnt?a/cnt:0),t:'n',s:i%2?'r1n':'r0n'}]);});
-  d1.push([{v:'TOTAL',t:'s',s:'tot'},{v:n(total),t:'n',s:'tot_n'},{v:100,t:'n',s:'tot_p'},{v:expenses.length,t:'n',s:'tot'},{v:n(expenses.length?total/expenses.length:0),t:'n',s:'tot_n'}]);
-  d1.push([]);
-  d1.push([{v:'PAYMENT METHOD',t:'s',s:'hdr'},{v:'',s:'hdr'},{v:'',s:'hdr'},{v:'',s:'hdr'},{v:'',s:'hdr'}]);
-  d1.push([{v:'Method / Card',t:'s',s:'col_h'},{v:'Amount',t:'s',s:'col_h'},{v:'%',t:'s',s:'col_h'},{v:'',t:'s',s:'col_h'},{v:'',t:'s',s:'col_h'}]);
-  Object.keys(pmTotals).sort((a,b)=>pmTotals[b]-pmTotals[a]).forEach((pm,i)=>{d1.push([{v:pm,t:'s',s:i%2?'r1':'r0'},{v:n(pmTotals[pm]),t:'n',s:i%2?'r1n':'r0n'},{v:total?+(pmTotals[pm]/total*100).toFixed(1):0,t:'n',s:i%2?'r1p':'r0p'},{t:'s',s:i%2?'r1':'r0'},{t:'s',s:i%2?'r1':'r0'}]);});
-  // Sheet 2: All Expenses
-  const d2=[];
-  d2.push([{v:'Date',t:'s',s:'col_h'},{v:'Description',t:'s',s:'col_h'},{v:'Category',t:'s',s:'col_h'},{v:'Payment',t:'s',s:'col_h'},{v:'Card',t:'s',s:'col_h'},{v:'Amount ('+baseCur+')',t:'s',s:'col_h'},{v:'Orig Amt',t:'s',s:'col_h'},{v:'Orig Cur',t:'s',s:'col_h'},{v:'Notes',t:'s',s:'col_h'}]);
-  sorted.forEach((e,i)=>{
-    const base=e.amountBase||e.amount,s=i%2?'r1':'r0',sn=i%2?'r1n':'r0n';
-    const orig=e.currency&&e.currency!==baseCur?n(e.amount):'';
-    d2.push([{v:e.date?fmt(e.date):'',t:'s',s},{v:e.name,t:'s',s},{v:e.cat,t:'s',s},{v:e.payMethod||'',t:'s',s},{v:e.cardName||'',t:'s',s},{v:n(base),t:'n',s:sn},{v:orig,t:orig?'n':'s',s:sn},{v:e.currency&&e.currency!==baseCur?e.currency:'',t:'s',s},{v:e.note||'',t:'s',s}]);
-  });
-  d2.push([{v:'',t:'s',s:'tot'},{v:'TOTAL',t:'s',s:'tot'},{v:'',t:'s',s:'tot'},{v:'',t:'s',s:'tot'},{v:'',t:'s',s:'tot'},{v:n(total),t:'n',s:'tot_n'},{v:'',t:'s',s:'tot'},{v:'',t:'s',s:'tot'},{v:'',t:'s',s:'tot'}]);
-  // Sheet 3: Category Summary
-  const d3=[];
-  d3.push([{v:'Category',t:'s',s:'col_h'},{v:'Amount',t:'s',s:'col_h'},{v:'%',t:'s',s:'col_h'},{v:'Items',t:'s',s:'col_h'},{v:'Avg/Item',t:'s',s:'col_h'},{v:'Biggest Expense',t:'s',s:'col_h'},{v:'Biggest Amt',t:'s',s:'col_h'}]);
-  catKeys.forEach((cat,i)=>{
-    const a=catTotals[cat],cnt=catCounts[cat],si=i%2?'r1':'r0',sin=i%2?'r1n':'r0n';
-    const big=[...expenses].filter(e=>e.cat===cat).sort((x,y)=>(y.amountBase||y.amount)-(x.amountBase||x.amount))[0];
-    d3.push([{v:cat,t:'s',s:si},{v:n(a),t:'n',s:sin},{v:total?+(a/total*100).toFixed(1):0,t:'n',s:i%2?'r1p':'r0p'},{v:cnt,t:'n',s:si},{v:n(cnt?a/cnt:0),t:'n',s:sin},{v:big?big.name:'',t:'s',s:si},{v:big?n(big.amountBase||big.amount):0,t:'n',s:sin}]);
-  });
-  d3.push([{v:'GRAND TOTAL',t:'s',s:'tot'},{v:n(total),t:'n',s:'tot_n'},{v:100,t:'n',s:'tot_p'},{v:expenses.length,t:'n',s:'tot'},{v:n(expenses.length?total/expenses.length:0),t:'n',s:'tot_n'},{v:'',t:'s',s:'tot'},{v:'',t:'s',s:'tot'}]);
-  return { sheets:[
-    {name:'Dashboard',data:d1,cols:[28,16,12,20,16]},
-    {name:'Expenses',data:d2,cols:[12,32,16,16,14,14,12,10,20]},
-    {name:'Summary',data:d3,cols:[22,14,10,10,14,28,14]}
-  ]};
-}
-// ── Minimal XLSX binary writer ──
-function writeXLSX(wb) {
-  const STYLES = {
-    title:   {font:{sz:15,bold:1,color:'1E3A5F'},fill:null,align:'left'},
-    subtitle:{font:{sz:11,color:'555555'},fill:null,align:'left'},
-    hdr:     {font:{sz:11,bold:1,color:'FFFFFF'},fill:'1E3A5F',align:'left'},
-    col_h:   {font:{sz:10,bold:1,color:'FFFFFF'},fill:'1E3A5F',align:'center'},
-    lbl:     {font:{sz:10,bold:1},fill:'F5F5F5',align:'left'},
-    amt:     {font:{sz:12,bold:1,color:'1565C0'},fill:'F5F5F5',align:'right',numFmt:'#,##0'},
-    amt_g:   {font:{sz:12,bold:1,color:'2E7D32'},fill:'E8F5E9',align:'right',numFmt:'#,##0'},
-    amt_r:   {font:{sz:12,bold:1,color:'C62828'},fill:'FFEBEE',align:'right',numFmt:'#,##0'},
-    num:     {font:{sz:12,bold:1},fill:'F5F5F5',align:'right'},
-    pct:     {font:{sz:12,bold:1,color:'1565C0'},fill:'F5F5F5',align:'right',numFmt:'0.0"%"'},
-    r0:      {font:{sz:10},fill:'FFFFFF',align:'left'},
-    r1:      {font:{sz:10},fill:'F0F4FF',align:'left'},
-    r0n:     {font:{sz:10},fill:'FFFFFF',align:'right',numFmt:'#,##0'},
-    r1n:     {font:{sz:10},fill:'F0F4FF',align:'right',numFmt:'#,##0'},
-    r0p:     {font:{sz:10},fill:'FFFFFF',align:'right',numFmt:'0.0"%"'},
-    r1p:     {font:{sz:10},fill:'F0F4FF',align:'right',numFmt:'0.0"%"'},
-    tot:     {font:{sz:10,bold:1},fill:'E3F2FD',align:'left'},
-    tot_n:   {font:{sz:10,bold:1},fill:'E3F2FD',align:'right',numFmt:'#,##0'},
-    tot_p:   {font:{sz:10,bold:1},fill:'E3F2FD',align:'right',numFmt:'0.0"%"'},
-  };
-  const styleKeys=Object.keys(STYLES);
-  const styleIndex=name=>styleKeys.indexOf(name)+1;
-  function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-  function col26(n){let r='';do{r=String.fromCharCode(65+n%26)+r;n=Math.floor(n/26)-1;}while(n>=0);return r;}
-  function cellRef(r,c){return col26(c)+(r+1);}
-  // Shared strings table
-  const sst=[]; const sstMap={};
-  function addStr(s){const k=String(s||'');if(sstMap[k]===undefined){sstMap[k]=sst.length;sst.push(k);}return sstMap[k];}
-  // Pre-collect strings
-  wb.sheets.forEach(sh=>sh.data.forEach(row=>row.forEach(cell=>{if(cell&&cell.t==='s')addStr(cell.v);})));
-  function sheetXML(sh) {
-    let xml='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheetData>';
-    sh.data.forEach((row,ri)=>{
-      if(!row||!row.length){xml+=`<row r="${ri+1}"/>`;return;}
-      xml+=`<row r="${ri+1}">`;
-      row.forEach((cell,ci)=>{
-        if(!cell&&cell!==0)return;
-        const ref=cellRef(ri,ci);
-        const si=cell.s?styleIndex(cell.s):0;
-        const sAttr=si?` s="${si}"`:'';
-        if(cell.t==='n'&&(cell.v||cell.v===0)){xml+=`<c r="${ref}" t="n"${sAttr}><v>${cell.v}</v></c>`;}
-        else if(cell.t==='s'){const idx=addStr(cell.v);xml+=`<c r="${ref}" t="s"${sAttr}><v>${idx}</v></c>`;}
-        else{xml+=`<c r="${ref}"${sAttr}/>`;}
+  const wb=XLSX.utils.book_new();
+
+  // Build worksheet from cell objects directly (not aoa)
+  function makeWS(rows, colWidths) {
+    const ws={};
+    let maxR=0, maxC=0;
+    rows.forEach(function(row,ri){
+      row.forEach(function(cell,ci){
+        if(cell==null) return;
+        const ref=XLSX.utils.encode_cell({r:ri,c:ci});
+        if(typeof cell==='object'&&cell.t) { ws[ref]=cell; }
+        else if(typeof cell==='number') { ws[ref]={v:cell,t:'n'}; }
+        else { ws[ref]={v:String(cell||''),t:'s'}; }
+        maxR=Math.max(maxR,ri); maxC=Math.max(maxC,ci);
       });
-      xml+='</row>';
     });
-    xml+='</sheetData>';
-    // Column widths
-    if(sh.cols){xml+='<cols>';sh.cols.forEach((w,i)=>{xml+=`<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`;});xml+='</cols>';}
-    xml+='</worksheet>';
-    return xml;
+    ws['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:maxR,c:maxC}});
+    if(colWidths) ws['!cols']=colWidths.map(w=>({wch:w}));
+    return ws;
   }
-  function sstXML(){
-    let x=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${sst.length}" uniqueCount="${sst.length}">`;
-    sst.forEach(s=>{x+=`<si><t xml:space="preserve">${esc(s)}</t></si>`;});
-    return x+'</sst>';
-  }
-  function stylesXML(){
-    // numFmts
-    const fmts=[]; const fmtMap={'#,##0':164,'0.0"%"':165};
-    let numFmtsXML='<numFmts count="2"><numFmt numFmtId="164" formatCode="#,##0"/><numFmt numFmtId="165" formatCode="0.0&quot;%&quot;"/></numFmts>';
-    // fonts
-    let fontsXML='<fonts count="'+(styleKeys.length+1)+'">';
-    fontsXML+='<font><sz val="10"/><name val="Arial"/></font>';
-    styleKeys.forEach(k=>{const f=STYLES[k].font||{};fontsXML+=`<font>${f.sz?`<sz val="${f.sz}"/>`:'<sz val="10"/>'} ${f.bold?'<b/>':''} ${f.color?`<color rgb="FF${f.color}"/>`:'<color theme="1"/>'}<name val="Arial"/></font>`;});
-    fontsXML+='</fonts>';
-    // fills
-    let fillsXML='<fills count="'+(styleKeys.length+2)+'"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>';
-    styleKeys.forEach(k=>{const f=STYLES[k].fill;fillsXML+=f?`<fill><patternFill patternType="solid"><fgColor rgb="FF${f}"/></patternFill></fill>`:'<fill><patternFill patternType="none"/></fill>';});
-    fillsXML+='</fills>';
-    // borders
-    let bordersXML='<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFCCCCCC"/></left><right style="thin"><color rgb="FFCCCCCC"/></right><top style="thin"><color rgb="FFCCCCCC"/></top><bottom style="thin"><color rgb="FFCCCCCC"/></bottom><diagonal/></border></borders>';
-    // cellStyleXfs + cellXfs
-    let xfsXML='<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="'+(styleKeys.length+1)+'"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>';
-    styleKeys.forEach((k,i)=>{
-      const st=STYLES[k];
-      const nfId=st.numFmt?(fmtMap[st.numFmt]||0):0;
-      const al=st.align||'left';
-      xfsXML+=`<xf numFmtId="${nfId}" fontId="${i+1}" fillId="${i+2}" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="${al}" vertical="center" wrapText="0"/></xf>`;
+
+  function s(v) { return {v:String(v||''),t:'s'}; }  // string cell
+  function n(v) { return {v:Math.round(parseFloat(v)||0),t:'n'}; } // number cell
+  function p(v) { return {v:String(Math.round(parseFloat(v)||0))+'%',t:'s'}; } // pct
+
+  // ── Sheet 1: Dashboard ──
+  const rows1=[];
+  rows1.push([s('✈ VOYAGE — '+trip.dest+' Budget Report'),null,null,null,null]);
+  rows1.push([s((trip.start?fmt(trip.start):'')+' to '+(trip.end?fmt(trip.end):'')+'  |  Currency: '+baseCur),null,null,null,null]);
+  rows1.push([s('Exported: '+new Date().toLocaleDateString('en-IN')),null,null,null,null]);
+  rows1.push([null]);
+  rows1.push([s('── SUMMARY ──'),null,null,null,null]);
+  rows1.push([s('Total Budget'),n(budget),null,s('Total Spent'),n(total)]);
+  rows1.push([s('Money Received'),n(moneyIn),null,s('Remaining'),n(remaining)]);
+  rows1.push([s('Total Expenses'),n(expenses.length),null,s('% Used'),p(budget?total/budget*100:0)]);
+  rows1.push([null]);
+  rows1.push([s('── CATEGORY BREAKDOWN ──'),null,null,null,null]);
+  rows1.push([s('Category'),s('Amount ('+baseCur+')'),s('% Share'),s('Items'),s('Avg/Item')]);
+  catK.forEach(function(cat){
+    const a=catT[cat],cnt=catC[cat];
+    rows1.push([s((CAT_ICONS[cat]||'•')+' '+cat),n(a),p(total?a/total*100:0),n(cnt),n(cnt?a/cnt:0)]);
+  });
+  rows1.push([s('TOTAL'),n(total),s('100%'),n(expenses.length),n(expenses.length?total/expenses.length:0)]);
+  rows1.push([null]);
+  rows1.push([s('── PAYMENT METHOD ──'),null,null,null,null]);
+  rows1.push([s('Method / Card'),s('Amount ('+baseCur+')'),s('% Share'),null,null]);
+  Object.keys(pmT).sort((a,b)=>pmT[b]-pmT[a]).forEach(function(pm){
+    rows1.push([s(pm),n(pmT[pm]),p(total?pmT[pm]/total*100:0),null,null]);
+  });
+  if(moneyIn>0){
+    rows1.push([null]);
+    rows1.push([s('── MONEY RECEIVED ──'),null,null,null,null]);
+    rows1.push([s('Description'),s('Amount'),s('Date'),null,null]);
+    (state.moneyIn[trip.id]||[]).forEach(function(x){
+      rows1.push([s(x.desc),n(x.amount),s(x.date?fmt(x.date):''),null,null]);
     });
-    xfsXML+='</cellXfs>';
-    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">${numFmtsXML}${fontsXML}${fillsXML}${bordersXML}${xfsXML}<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+    rows1.push([s('Total Received'),n(moneyIn),null,null,null]);
   }
-  function workbookXML(){
-    let x=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>`;
-    wb.sheets.forEach((sh,i)=>{x+=`<sheet name="${esc(sh.name)}" sheetId="${i+1}" r:id="rId${i+1}"/>`;});
-    return x+'</sheets></workbook>';
-  }
-  function wbRelsXML(){
-    let x=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">`;
-    wb.sheets.forEach((_,i)=>{x+=`<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i+1}.xml"/>`;});
-    x+=`<Relationship Id="rId${wb.sheets.length+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>`;
-    x+=`<Relationship Id="rId${wb.sheets.length+2}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`;
-    return x+'</Relationships>';
-  }
-  const files={
-    '[Content_Types].xml':`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${wb.sheets.map((_,i)=>`<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}</Types>`,
-    '_rels/.rels':`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
-    'xl/workbook.xml':workbookXML(),
-    'xl/_rels/workbook.xml.rels':wbRelsXML(),
-    'xl/sharedStrings.xml':sstXML(),
-    'xl/styles.xml':stylesXML(),
-  };
-  wb.sheets.forEach((sh,i)=>{files[`xl/worksheets/sheet${i+1}.xml`]=sheetXML(sh);});
-  return zipFiles(files);
+  const ws1=makeWS(rows1,[28,16,12,20,16]);
+  ws1['!merges']=[{s:{r:0,c:0},e:{r:0,c:4}},{s:{r:1,c:0},e:{r:1,c:4}},{s:{r:2,c:0},e:{r:2,c:4}}];
+  XLSX.utils.book_append_sheet(wb,ws1,'Dashboard');
+
+  // ── Sheet 2: All Expenses ──
+  const rows2=[[s('Date'),s('Description'),s('Category'),s('Payment Method'),s('Card'),s('Amount ('+baseCur+')'),s('Orig Amount'),s('Orig Currency'),s('Notes')]];
+  sorted.forEach(function(e){
+    const base=e.amountBase||e.amount;
+    rows2.push([s(e.date?fmt(e.date):''),s(e.name),s((CAT_ICONS[e.cat]||'')+' '+e.cat),s(e.payMethod||'Cash'),s(e.cardName||''),n(base),e.currency&&e.currency!==baseCur?n(e.amount):s(''),s(e.currency&&e.currency!==baseCur?e.currency:''),s(e.note||'')]);
+  });
+  rows2.push([s(''),s('TOTAL'),s(''),s(''),s(''),n(total),s(''),s(''),s('')]);
+  const ws2=makeWS(rows2,[12,30,18,18,14,14,12,10,22]);
+  ws2['!autofilter']={ref:'A1:I1'};
+  XLSX.utils.book_append_sheet(wb,ws2,'Expenses');
+
+  // ── Sheet 3: Category Summary ──
+  const rows3=[[s('Category'),s('Amount ('+baseCur+')'),s('% Share'),s('Items'),s('Avg/Item'),s('Biggest Expense'),s('Biggest Amount')]];
+  catK.forEach(function(cat){
+    const a=catT[cat],cnt=catC[cat];
+    const big=[...expenses].filter(e=>e.cat===cat).sort((x,y)=>(y.amountBase||y.amount)-(x.amountBase||x.amount))[0];
+    rows3.push([s((CAT_ICONS[cat]||'•')+' '+cat),n(a),p(total?a/total*100:0),n(cnt),n(cnt?a/cnt:0),s(big?big.name:''),big?n(big.amountBase||big.amount):s('')]);
+  });
+  rows3.push([s('GRAND TOTAL'),n(total),s('100%'),n(expenses.length),n(expenses.length?total/expenses.length:0),s(''),s('')]);
+  const ws3=makeWS(rows3,[24,16,12,10,14,30,16]);
+  XLSX.utils.book_append_sheet(wb,ws3,'Summary');
+
+  const out=XLSX.write(wb,{bookType:'xlsx',type:'array'});
+  const blob=new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const url=URL.createObjectURL(blob);
+  const now=new Date();
+  const ds=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+  const a2=document.createElement('a');
+  a2.href=url; a2.download='Budget-'+trip.dest.replace(/[^a-z0-9]/gi,'-')+'-'+ds+'.xlsx';
+  document.body.appendChild(a2); a2.click(); document.body.removeChild(a2);
+  URL.revokeObjectURL(url);
+  showToast('Excel exported ✅ — 3 sheets ready');
 }
-// ── Minimal ZIP writer ──
-function zipFiles(files) {
-const enc = s => {const b=new TextEncoder().encode(s);return b;};
-function crc32(b){let c=0xFFFFFFFF;for(let i=0;i<b.length;i++){c^=b[i];for(let j=0;j<8;j++)c=c&1?(c>>>1)^0xEDB88320:(c>>>1);}return(c^0xFFFFFFFF)>>>0;}
-function u16(n){return[n&0xFF,(n>>8)&0xFF];}
-function u32(n){return[n&0xFF,(n>>8)&0xFF,(n>>16)&0xFF,(n>>24)&0xFF];}
-function concat(...arrs){const tot=arrs.reduce((s,a)=>s+a.length,0);const out=new Uint8Array(tot);let off=0;arrs.forEach(a=>{out.set(a,off);off+=a.length;});return out;}
-const entries=[]; let offset=0;
-const localHeaders=[];
-Object.keys(files).forEach(name=>{ const nameBytes=enc(name); const data=enc(files[name]); const crc=crc32(data); const local=concat( new Uint8Array([0x50,0x4B,0x03,0x04]), new Uint8Array([20,0]),new Uint8Array([0,0]),new Uint8Array([0,0]), new Uint8Array([0,0,0,0]), new Uint8Array(u32(crc)), new Uint8Array(u32(data.length)),new Uint8Array(u32(data.length)), new Uint8Array(u16(nameBytes.length)),new Uint8Array([0,0]), nameBytes,data ); localHeaders.push(local); entries.push({name:nameBytes,crc,size:data.length,offset}); offset+=local.length;
-});
-const centralDir=entries.map(e=>{ return concat( new Uint8Array([0x50,0x4B,0x01,0x02]), new Uint8Array([20,0,20,0]),new Uint8Array([0,0]),new Uint8Array([0,0]), new Uint8Array([0,0,0,0]), new Uint8Array(u32(e.crc)), new Uint8Array(u32(e.size)),new Uint8Array(u32(e.size)), new Uint8Array(u16(e.name.length)),new Uint8Array([0,0,0,0,0,0,0,0,0,0]), new Uint8Array(u32(e.offset)), e.name );
-});
-const cdSize=centralDir.reduce((s,a)=>s+a.length,0);
-const eocd=concat( new Uint8Array([0x50,0x4B,0x05,0x06,0,0,0,0]), new Uint8Array(u16(entries.length)),new Uint8Array(u16(entries.length)), new Uint8Array(u32(cdSize)),new Uint8Array(u32(offset)), new Uint8Array([0,0])
-);
-return concat(...localHeaders,...centralDir,eocd);
-}
+
 function tryOpenApp(appUrl, webUrl) {
 // Try native app first via URL scheme, fall back to web
 const iframe = document.createElement('iframe');
