@@ -433,6 +433,7 @@
     <div class="page-header">
       <div><div class="page-title">Budget 💰</div></div>
       <div style="display:flex;gap:8px;">
+        <button class="header-btn" onclick="openConverterSheet()" title="Currency Converter" style="font-size:16px;">💱</button>
         <button class="header-btn" style="background:var(--red-light);color:var(--red);font-size:18px;" title="Deleted expenses" onclick="openSheet('sheet-expense-trash')">🗑</button>
         <button class="header-btn" style="background:#1D6F42;color:white;font-size:13px;font-weight:700;" title="Export to Excel" onclick="exportBudgetExcel()">XLS</button>
         <button class="header-btn" style="background:var(--green-light);color:var(--green);font-size:13px;font-weight:700;" title="Money Received / Cash" onclick="openSheet('sheet-money-in')">💵</button>
@@ -1204,6 +1205,32 @@
     <button class="btn-primary" onclick="saveApiKey()">Save Key</button>
     <button id="btn-clear-api-key" onclick="clearApiKey()" style="display:none;width:100%;padding:13px;background:var(--red-light);color:var(--red);border:none;border-radius:14px;font-size:15px;font-weight:600;cursor:pointer;margin-top:8px;font-family:inherit;">Remove Key</button>
     <div style="margin-top:12px;padding:10px;background:var(--surface2);border-radius:10px;font-size:11px;color:var(--muted);text-align:center;line-height:1.5;">Without a key, tap Scan → uses offline OCR automatically.<br>Key stored only on your device.</div>
+  </div>
+</div>
+<!-- Currency Converter Sheet -->
+<div class="overlay" id="overlay-sheet-converter" onclick="closeSheet('sheet-converter')"></div>
+<div class="sheet" id="sheet-converter">
+  <div class="sheet-handle"></div>
+  <div class="sheet-title">💱 Currency Converter</div>
+  <div class="sheet-body">
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;">
+      <div style="flex:1;">
+        <label class="form-label">Amount</label>
+        <input class="form-input" id="conv-amount" type="number" placeholder="1000" oninput="doConvert()" style="font-size:18px;font-weight:700;"/>
+      </div>
+      <div style="flex:1;">
+        <label class="form-label">From</label>
+        <select class="form-input" id="conv-from" onchange="doConvert()" style="font-size:14px;"></select>
+      </div>
+      <div style="padding-top:20px;font-size:20px;cursor:pointer;" onclick="swapConvert()">⇄</div>
+      <div style="flex:1;">
+        <label class="form-label">To</label>
+        <select class="form-input" id="conv-to" onchange="doConvert()" style="font-size:14px;"></select>
+      </div>
+    </div>
+    <div id="conv-result" style="text-align:center;font-size:28px;font-weight:800;color:var(--sky-dark);padding:16px;background:var(--sky-light);border-radius:14px;min-height:60px;"></div>
+    <div id="conv-rate" style="text-align:center;font-size:12px;color:var(--muted);margin-top:8px;"></div>
+    <div style="margin-top:14px;font-size:11px;color:var(--muted);text-align:center;">Uses exchange rates saved in Budget → Edit Rates</div>
   </div>
 </div>
 <!-- TOAST -->
@@ -2383,6 +2410,48 @@ function resetExpenseForm() {
 // ============= API KEY MANAGEMENT =============
 const API_KEY_STORAGE = 'voyage_openrouter_key';
 function getApiKey() { try { return localStorage.getItem(API_KEY_STORAGE)||''; } catch(e) { return ''; } }
+function openConverterSheet() {
+  const trip = getActiveTrip('bg');
+  const cur = trip?.currency || 'INR';
+  const opts = ALL_CURRENCIES.map(c2 => `<option value="${c2}">${c2}</option>`).join('');
+  const fromEl = document.getElementById('conv-from');
+  const toEl = document.getElementById('conv-to');
+  if (fromEl) { fromEl.innerHTML = opts; fromEl.value = cur; }
+  if (toEl) { toEl.innerHTML = opts; toEl.value = cur === 'INR' ? 'THB' : 'INR'; }
+  const amtEl = document.getElementById('conv-amount');
+  if (amtEl) amtEl.value = '1000';
+  openSheet('sheet-converter');
+  doConvert();
+}
+function swapConvert() {
+  const f = document.getElementById('conv-from');
+  const t = document.getElementById('conv-to');
+  if (!f || !t) return;
+  const tmp = f.value; f.value = t.value; t.value = tmp;
+  doConvert();
+}
+function doConvert() {
+  const trip = getActiveTrip('bg');
+  const amt = parseFloat(document.getElementById('conv-amount')?.value) || 0;
+  const from = document.getElementById('conv-from')?.value;
+  const to = document.getElementById('conv-to')?.value;
+  const resEl = document.getElementById('conv-result');
+  const rateEl = document.getElementById('conv-rate');
+  if (!resEl || !from || !to) return;
+  if (from === to) { resEl.textContent = fmtCurrency(amt, to); if (rateEl) rateEl.textContent = '1 ' + from + ' = 1 ' + to; return; }
+  const rates = state.exchangeRates?.[trip?.id] || {};
+  const rateKey = from + '_to_' + to;
+  const rateKeyInv = to + '_to_' + from;
+  let rate = rates[rateKey] || (rates[rateKeyInv] ? 1/rates[rateKeyInv] : null);
+  if (rate) {
+    const result = amt * rate;
+    resEl.textContent = fmtCurrency(result, to);
+    if (rateEl) rateEl.textContent = '1 ' + from + ' = ' + rate.toFixed(4) + ' ' + to;
+  } else {
+    resEl.textContent = '—';
+    if (rateEl) rateEl.textContent = 'No rate saved. Add in Budget → Edit Rates';
+  }
+}
 function updateApiKeyIndicator(){const el=document.getElementById('api-key-indicator');if(!el)return;const key=getApiKey();if(key){el.innerHTML='🟢 AI scan ready (OpenRouter)';el.style.color='var(--green)';}else{el.innerHTML='🔵 Tap 🔑 for AI scan · offline OCR available';el.style.color='var(--sky-dark)';}}
 function startBillScan() {
   document.getElementById('bill-camera-input').click();
@@ -3597,9 +3666,26 @@ const tripCards = state.trips.map(t => { try { return _buildTripCard(t, now); } 
 function _buildTripCard(t, now) { const expenses = state.expenses[t.id] || []; const moneyIn = (state.moneyIn?.[t.id]||[]).reduce((s,x)=>s+x.amount,0); const spent = expenses.reduce((s,e) => s+(e.amountBase||e.amount), 0); const budget = (t.budget||0) + moneyIn; const remaining = budget - spent; const pct = budget ? Math.min(100, Math.round((spent/budget)*100)) : 0; const packItems = state.packingLists[t.id] || []; const packed = packItems.filter(i=>i.checked).length; const packPct = packItems.length ? Math.round((packed/packItems.length)*100) : 0; const acts = (state.itineraries[t.id]||[]).length; const flights = (state.flights[t.id]||[]).length; const hotels = (state.hotels[t.id]||[]).length; const docs = (state.documents?.[t.id]||[]).length; const daysLeft = t.end ? Math.ceil((new Date(t.end+'T12:00') - now)/864e5) : null; const isActive = t.start && t.end && now >= new Date(t.start+'T12:00') && now <= new Date(t.end+'T12:00'); const cur = t.currency || ''; const tripDays = (t.start&&t.end) ? Math.max(1,Math.round((new Date(t.end+'T12:00')-new Date(t.start+'T12:00'))/864e5)+1) : null; const avgPerDay = tripDays && spent ? spent/tripDays : null; const daysElapsed = t.start ? Math.max(0,Math.min(tripDays||0,Math.ceil((now-new Date(t.start+'T12:00'))/864e5))) : 0; const projectedTotal = daysElapsed > 0 && tripDays && avgPerDay ? avgPerDay * tripDays : null; const overUnder = projectedTotal && budget ? projectedTotal - budget : null; const catTotals = {}; const payTotals = {}; expenses.forEach(e => { const amt = e.amountBase||e.amount; catTotals[e.cat] = (catTotals[e.cat]||0) + amt; const pm = e.payMethod==='💳 Credit Card'&&e.cardName ? '💳 '+e.cardName : (e.payMethod||'💵 Cash'); payTotals[pm] = (payTotals[pm]||0) + amt; }); const topCats = Object.keys(catTotals).sort((a,b)=>catTotals[b]-catTotals[a]); const biggest = expenses.length ? [...expenses].sort((a,b)=>(b.amountBase||b.amount)-(a.amountBase||a.amount))[0] : null; const expanded = dashExpandedTrips.has(t.id); const catBars = topCats.map(cat => { const amt = catTotals[cat], share = spent ? Math.round((amt/spent)*100) : 0; return '<div style="margin-bottom:8px;">' +'<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;">' +'<span style="color:var(--mid);">'+(CAT_ICONS[cat]||'📌')+' '+cat+'</span>' +'<span style="font-weight:600;color:var(--slate);">'+fmtCurrency(amt,cur)+' <span style="color:var(--muted);font-weight:400;">('+share+'%)</span></span></div>' +'<div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;">' +'<div style="height:100%;width:'+share+'%;background:var(--sky);border-radius:3px;"></div></div></div>'; }).join(''); const payRows = Object.keys(payTotals).sort((a,b)=>payTotals[b]-payTotals[a]).slice(0,5).map(pm => { const amt = payTotals[pm], share = spent ? Math.round((amt/spent)*100) : 0; return '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);">' +'<span style="font-size:12px;color:var(--mid);">'+pm+'</span>' +'<span style="font-size:12px;font-weight:700;">'+fmtCurrency(amt,cur)+' <span style="font-size:10px;color:var(--muted);font-weight:400;">('+share+'%)</span></span></div>'; }).join(''); const statBoxes = [ biggest ? { label:'BIGGEST EXPENSE', val: biggest.name, sub: fmtCurrency(biggest.amountBase||biggest.amount,cur), col:'var(--sky-dark)' } : null, avgPerDay ? { label:'AVG / DAY', val: fmtCurrency(avgPerDay,cur), sub: tripDays+'d trip', col:'var(--sky-dark)' } : null, projectedTotal ? { label:'PROJECTED TOTAL', val: fmtCurrency(projectedTotal,cur), sub: (overUnder>0?'⚠️ +'+fmtCurrency(overUnder,cur)+' over':'✅ '+fmtCurrency(Math.abs(overUnder||0),cur)+' under budget'), col: overUnder>0?'var(--red)':'var(--green)' } : null, moneyIn > 0 ? { label:'MONEY RECEIVED', val: '+'+fmtCurrency(moneyIn,cur), sub:'Added to budget', col:'var(--green)' } : null, ].filter(Boolean); const statHtml = statBoxes.length ? '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">' +statBoxes.map(b=>'<div style="background:var(--surface2);border-radius:10px;padding:10px;">' +'<div style="font-size:9px;color:var(--muted);font-weight:700;letter-spacing:.5px;">'+b.label+'</div>' +'<div style="font-size:13px;font-weight:800;color:'+b.col+';margin-top:3px;">'+b.val+'</div>' +'<div style="font-size:10px;color:var(--muted);">'+b.sub+'</div></div>').join('')+'</div>' : ''; const infoRow = '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px;">' +[['📅',acts,'Activities'],['✈️',flights,'Flights'],['🏨',hotels,'Hotels'],['📄',docs,'Docs']].map(([ic,n,lb])=> '<div style="background:var(--surface2);border-radius:10px;padding:8px 4px;text-align:center;">' +'<div style="font-size:16px;font-weight:800;color:var(--sky);">'+n+'</div>' +'<div style="font-size:9px;color:var(--muted);font-weight:600;">'+lb+'</div></div>').join('')+'</div>'; const analysisHtml = !expenses.length ? '<div style="font-size:12px;color:var(--muted);padding:8px 0;">No expenses logged yet</div>' : catBars +(payRows ? '<div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.5px;margin:12px 0 6px;">BY PAYMENT METHOD</div>'+payRows : '') + statHtml; return '<div class="card" style="margin-bottom:14px;">' +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">' +'<span style="font-size:28px;">'+t.emoji+'</span>' +'<div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:16px;">'+t.dest+'</div>' +'<div style="font-size:12px;color:var(--muted);">'+(t.start?fmt(t.start):'')+(t.end?' → '+fmt(t.end):'')+'</div></div>' +(isActive?'<span style="background:var(--green);color:white;border-radius:8px;padding:3px 8px;font-size:11px;font-weight:700;flex-shrink:0;">ACTIVE</span>' :daysLeft>0?'<span style="background:var(--sky-light);color:var(--sky-dark);border-radius:8px;padding:3px 8px;font-size:11px;font-weight:600;flex-shrink:0;">In '+daysLeft+'d</span>':'') +'</div>' + infoRow +'<div style="margin-bottom:8px;">' +'<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px;"><span>💰 Budget</span><span>'+fmtCurrency(spent,cur)+' / '+fmtCurrency(budget,cur)+(remaining<0?'<span style="color:var(--red);font-weight:700;">Over budget</span>':'<span style="color:var(--green);">'+fmtCurrency(remaining,cur)+' left</span>')+'</span></div>' +'<div style="height:7px;background:var(--border);border-radius:4px;overflow:hidden;"><div style="height:100%;width:'+pct+'%;background:'+( pct>100?'var(--red)':pct>80?'var(--sand)':'var(--sky)')+';border-radius:4px;transition:width .4s;"></div></div></div>' +'<div style="margin-bottom:8px;">' +'<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px;"><span>🧳 Packing</span><span>'+packed+'/'+packItems.length+' packed</span></div>' +'<div style="height:7px;background:var(--border);border-radius:4px;overflow:hidden;"><div style="height:100%;width:'+packPct+'%;background:var(--sand);border-radius:4px;transition:width .4s;"></div></div></div>' +'<div onclick="toggleDashAnalysis(this.dataset.id)" data-id="'+t.id+'" style="display:flex;align-items:center;justify-content:center;gap:5px;padding:9px 0 2px;cursor:pointer;border-top:1px solid var(--border);margin-top:6px;">' +'<span style="font-size:12px;font-weight:700;color:var(--sky);">'+(expanded?'▲ Hide':'▼ Spending Analysis')+'</span></div>' +(expanded?'<div style="margin-top:10px;">'+analysisHtml+'</div>':'') +'</div>';
 }
 // Upcoming reminders
-const pending = (state.reminders||[]).filter(r=>!r.done&&r.datetime).sort((a,b)=>a.datetime.localeCompare(b.datetime)).slice(0,3);
+  const finishedTrips = state.trips.filter(t => t.end && new Date(t.end+'T12:00') < now && (state.expenses[t.id]||[]).length > 0);
+  let crossTripHtml = '';
+  if (finishedTrips.length >= 2) {
+    const tripStats = finishedTrips.map(t => {
+      const spent = (state.expenses[t.id]||[]).reduce((s,e)=>s+(e.amountBase||e.amount),0);
+      const days = Math.max(1, Math.round((new Date(t.end+'T12:00')-new Date(t.start+'T12:00'))/864e5)+1);
+      return { dest:t.dest, emoji:t.emoji||'✈️', perDay:spent/days, total:spent, days, currency:t.currency||'INR' };
+    }).sort((a,b)=>b.perDay-a.perDay);
+    const avgPerDay = tripStats.reduce((s,t)=>s+t.perDay,0)/tripStats.length;
+    crossTripHtml = '<div class="card" style="margin-bottom:14px;"><div style="font-size:13px;font-weight:700;color:var(--slate);margin-bottom:10px;">📊 Trip Cost Comparison</div>'
+      + tripStats.map(t => {
+        const bar = Math.round((t.perDay/tripStats[0].perDay)*100);
+        const col = t.perDay > avgPerDay*1.2 ? 'var(--red)' : t.perDay < avgPerDay*0.8 ? 'var(--green)' : 'var(--sky)';
+        return '<div style="margin-bottom:10px;"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;"><span>'+t.emoji+' '+t.dest+' ('+t.days+'d)</span><span style="font-weight:700;color:'+col+';">'+fmtCurrency(t.perDay,t.currency)+'/day</span></div><div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;"><div style="height:100%;width:'+bar+'%;background:'+col+';border-radius:3px;"></div></div><div style="font-size:10px;color:var(--muted);margin-top:2px;">Total: '+fmtCurrency(t.total,t.currency)+'</div></div>';
+      }).join('')
+      +'<div style="border-top:1px solid var(--border);padding-top:8px;font-size:11px;color:var(--muted);">Avg: '+fmtCurrency(avgPerDay,tripStats[0].currency)+'/day</div></div>';
+  }
+  const pending = (state.reminders||[]).filter(r=>!r.done&&r.datetime).sort((a,b)=>a.datetime.localeCompare(b.datetime)).slice(0,3);
 const remHtml = pending.length ? '<div class="section-label" style="margin-top:4px;">⏰ Upcoming Reminders</div>' + pending.map(r => { const due = new Date(r.datetime).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}); return '<div class="card" style="display:flex;gap:10px;align-items:center;margin-bottom:8px;padding:12px;">' +'<span style="font-size:20px;">'+(REM_CAT_ICONS[r.cat]||'📌')+'</span>' +'<div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:600;color:var(--slate);">'+r.title+'</div>' +'<div style="font-size:11px;color:var(--muted);">'+due+'</div></div>' +'<button onclick="toggleReminder(this.dataset.id)" data-id="'+r.id+'" style="background:var(--green-light);color:var(--green);border:1px solid var(--green);border-radius:8px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;">Done</button>' +'</div>'; }).join('') : '';
-container.innerHTML = summaryHtml + tripCards + remHtml;
+container.innerHTML = summaryHtml + crossTripHtml + tripCards + remHtml;
 }
 // ============= INIT =============
 (function() {
