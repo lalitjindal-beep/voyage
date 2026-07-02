@@ -198,6 +198,12 @@
   .lounge-card-actions { display: flex; gap: 8px; margin-top: 10px; }
   .lounge-card-actions button { flex: 1; background: var(--surface2); color: var(--sky-dark); border: 1px solid var(--border); border-radius: 8px; padding: 8px 0; font-size: 11px; font-weight: 600; cursor: pointer; }
   .lounge-period-row { display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid #D0E8FF; }
+  .cur-drop-item { padding:9px 12px;font-size:13px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border); }
+  .cur-drop-item:hover,.cur-drop-item.selected { background:var(--sky-light); }
+  .cur-drop-item:last-child { border-bottom:none; }
+  .cur-code { font-weight:700;color:var(--sky-dark);font-size:13px;min-width:45px; }
+  .cur-name { font-size:11px;color:var(--muted);flex:1;padding-left:8px; }
+  .cur-sym { font-size:12px;color:var(--mid);font-weight:600;min-width:24px;text-align:right; }
   /* CALENDAR VIEW */
   .cal-grid { display: grid; grid-template-columns: repeat(7,1fr); gap: 3px; margin-bottom: 16px; }
   .cal-header-cell { text-align: center; font-size: 11px; font-weight: 700; color: var(--muted); padding: 5px 0; }
@@ -600,18 +606,7 @@
     <div class="form-group"><label class="form-label">Budget</label><input class="form-input" id="inp-trip-budget" type="number" placeholder="e.g. 2000" /></div>
     <div class="form-group">
       <label class="form-label">Currency</label>
-      <select class="form-select" id="inp-trip-currency">
-        <option value="USD">USD – US Dollar</option>
-        <option value="EUR">EUR – Euro</option>
-        <option value="INR">INR – Indian Rupee</option>
-        <option value="GBP">GBP – British Pound</option>
-        <option value="JPY">JPY – Japanese Yen</option>
-        <option value="AED">AED – UAE Dirham</option>
-        <option value="SGD">SGD – Singapore Dollar</option>
-        <option value="THB">THB – Thai Baht</option>
-        <option value="RUB">RUB – Russian Ruble</option>
-        <option value="AUD">AUD – Australian Dollar</option>
-      </select>
+      <div class="cur-search-wrap" style="position:relative;"><input class="form-input" id="inp-trip-currency-inp" placeholder="Search currency or country..." autocomplete="off" style="font-size:13px;" oninput="filterCurDropdown('inp-trip-currency')" onfocus="showCurDropdown('inp-trip-currency')" onblur="setTimeout(()=>hideCurDropdown('inp-trip-currency'),200)"/><input type="hidden" id="inp-trip-currency" value="INR"/><div id="inp-trip-currency-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:white;border:1.5px solid var(--sky);border-radius:10px;max-height:200px;overflow-y:auto;z-index:999;box-shadow:0 4px 20px rgba(0,0,0,.15);"></div></div>
     </div>
     <div class="form-group">
       <label class="form-label">Cover Emoji</label>
@@ -818,36 +813,14 @@
     <div class="form-group"><label class="form-label">Total Budget</label><input class="form-input" id="edit-budget-amount" type="number" placeholder="e.g. 50000" /></div>
     <div class="form-group">
       <label class="form-label">Base Currency (your budget currency)</label>
-      <select class="form-select" id="edit-budget-currency">
-        <option value="USD">USD – US Dollar</option>
-        <option value="EUR">EUR – Euro</option>
-        <option value="INR">INR – Indian Rupee</option>
-        <option value="GBP">GBP – British Pound</option>
-        <option value="JPY">JPY – Japanese Yen</option>
-        <option value="AED">AED – UAE Dirham</option>
-        <option value="SGD">SGD – Singapore Dollar</option>
-        <option value="THB">THB – Thai Baht</option>
-        <option value="RUB">RUB – Russian Ruble</option>
-        <option value="AUD">AUD – Australian Dollar</option>
-      </select>
+      <div class="cur-search-wrap" style="position:relative;"><input class="form-input" id="edit-budget-currency-inp" placeholder="Search currency or country..." autocomplete="off" style="font-size:13px;" oninput="filterCurDropdown('edit-budget-currency')" onfocus="showCurDropdown('edit-budget-currency')" onblur="setTimeout(()=>hideCurDropdown('edit-budget-currency'),200)"/><input type="hidden" id="edit-budget-currency" value="INR"/><div id="edit-budget-currency-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:white;border:1.5px solid var(--sky);border-radius:10px;max-height:200px;overflow-y:auto;z-index:999;box-shadow:0 4px 20px rgba(0,0,0,.15);"></div></div>
     </div>
     <div style="background:var(--sky-light);border-radius:12px;padding:14px;margin-bottom:16px;">
       <div style="font-size:13px;font-weight:700;color:var(--sky-dark);margin-bottom:4px;">💱 Trip Currencies</div>
       <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Add every currency you'll spend in. Each becomes a quick-tap button when adding expenses.</div>
       <div id="trip-currencies-list" style="margin-bottom:12px;"></div>
       <div style="display:flex;gap:8px;align-items:center;">
-        <select class="form-select" id="new-cur-select" style="flex:1;">
-          <option value="USD">USD – US Dollar</option>
-          <option value="EUR">EUR – Euro</option>
-          <option value="INR">INR – Indian Rupee</option>
-          <option value="GBP">GBP – British Pound</option>
-          <option value="JPY">JPY – Japanese Yen</option>
-          <option value="AED">AED – UAE Dirham</option>
-          <option value="SGD">SGD – Singapore Dollar</option>
-          <option value="THB">THB – Thai Baht</option>
-          <option value="RUB">RUB – Russian Ruble</option>
-          <option value="AUD">AUD – Australian Dollar</option>
-        </select>
+        <div class="cur-search-wrap" style="position:relative;"><input class="form-input" id="new-cur-select-inp" placeholder="Search currency or country..." autocomplete="off" style="flex:1;font-size:13px;" oninput="filterCurDropdown('new-cur-select')" onfocus="showCurDropdown('new-cur-select')" onblur="setTimeout(()=>hideCurDropdown('new-cur-select'),200)"/><input type="hidden" id="new-cur-select" value="INR"/><div id="new-cur-select-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:white;border:1.5px solid var(--sky);border-radius:10px;max-height:200px;overflow-y:auto;z-index:999;box-shadow:0 4px 20px rgba(0,0,0,.15);"></div></div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
         <div style="font-size:13px;font-weight:600;color:var(--slate);white-space:nowrap;" id="new-cur-rate-label">1 ? =</div>
@@ -1345,7 +1318,7 @@ function saveTrip() {
     start: document.getElementById('inp-trip-start').value,
     end: document.getElementById('inp-trip-end').value,
     budget: parseFloat(document.getElementById('inp-trip-budget').value) || 0,
-    currency: document.getElementById('inp-trip-currency').value,
+    currency: getCurVal('inp-trip-currency'),
     emoji: selectedEmoji || '✈️',
     color: BG_COLORS[Math.floor(Math.random() * BG_COLORS.length)]
   };
@@ -2200,7 +2173,7 @@ function openSheet(id, ctx) {
   else if (id === 'sheet-share') populateShareTripSelect();
   else if (id === 'sheet-trash') renderTrash();
   else if (id === 'sheet-reminder-trash') renderReminderTrash();
-  else if (id === 'sheet-edit-budget') populateEditBudget();
+  else if (id === 'sheet-edit-budget') { populateEditBudget(); }
   else if (id === 'sheet-expense') resetExpenseForm();
   else if (id === 'sheet-trip-trash') renderTripTrash();
   else if (id === 'sheet-expense-trash') renderExpenseTrash();
@@ -2355,7 +2328,7 @@ document.addEventListener('change', e => {
 function addTripCurrency() {
   const trip = getActiveTrip('bg');
   if (!trip) { showToast('Select a trip first'); return; }
-  const cur = document.getElementById('new-cur-select').value;
+  const cur = getCurVal('new-cur-select');
   const rate = parseFloat(document.getElementById('new-cur-rate').value);
   const baseCur = document.getElementById('edit-budget-currency').value || trip.currency;
   if (cur === baseCur) { showToast('That\'s already your base currency'); return; }
@@ -3724,6 +3697,68 @@ const remHtml = pending.length ? '<div class="section-label" style="margin-top:4
   }
   container.innerHTML = summaryHtml + crossTripHtml + loungeNudge + tripCards + remHtml;
 }
+
+// ── Searchable currency picker ──
+const CUR_SEARCH_EXTRAS = {'IDR':'Indonesia Indonesian','RUB':'Russia Russian','ETB':'Ethiopia Ethiopian','KES':'Kenya Kenyan','TZS':'Tanzania Tanzanian','UGX':'Uganda Ugandan','GHS':'Ghana Ghanaian','NGN':'Nigeria Nigerian','EGP':'Egypt Egyptian','MAD':'Morocco Moroccan','ZAR':'South Africa','BRL':'Brazil Brazilian','MXN':'Mexico Mexican','CNY':'China Chinese','KRW':'Korea Korean','THB':'Thailand Thai','VND':'Vietnam Vietnamese','MYR':'Malaysia Malaysian','PHP':'Philippines Filipino','KHR':'Cambodia Cambodian','MMK':'Myanmar Burma','LAK':'Laos Laotian','MNT':'Mongolia Mongolian','GEL':'Georgia Georgian','AMD':'Armenia Armenian','AZN':'Azerbaijan','KZT':'Kazakhstan','UZS':'Uzbekistan','HKD':'Hong Kong','TWD':'Taiwan','BND':'Brunei','NPR':'Nepal Nepali','LKR':'Sri Lanka','PKR':'Pakistan Pakistani','BDT':'Bangladesh','TND':'Tunisia','DZD':'Algeria Algerian','MUR':'Mauritius','QAR':'Qatar','KWD':'Kuwait','BHD':'Bahrain','OMR':'Oman','SAR':'Saudi Arabia','ARS':'Argentina','CLP':'Chile Chilean','COP':'Colombia','PEN':'Peru Peruvian','SEK':'Sweden Swedish','NOK':'Norway Norwegian','DKK':'Denmark Danish','PLN':'Poland Polish','CZK':'Czech Republic','HUF':'Hungary Hungarian','RON':'Romania','BGN':'Bulgaria','HRK':'Croatia','MZN':'Mozambique'};
+function buildCurDropdown(id, filter) {
+  const drop = document.getElementById(id+'-drop');
+  const hidden = document.getElementById(id);
+  if (!drop) return;
+  const q = (filter||'').toLowerCase().trim();
+  const matches = ALL_CURRENCIES.filter(function(code) {
+    if (!q) return true;
+    const name = (CUR_NAMES[code]||'').toLowerCase();
+    const extra = (CUR_SEARCH_EXTRAS[code]||'').toLowerCase();
+    return code.toLowerCase().includes(q) || name.includes(q) || extra.includes(q);
+  });
+  const cur = hidden ? hidden.value : '';
+  drop.innerHTML = matches.slice(0,30).map(function(code) {
+    const sel = code===cur ? ' selected' : '';
+    return '<div class="cur-drop-item'+sel+'" data-id="'+id+'" data-code="'+code+'" onmousedown="selectCur(this)">'
+      +'<span class="cur-code">'+code+'</span>'
+      +'<span class="cur-name">'+(CUR_NAMES[code]||code)+'</span>'
+      +'<span class="cur-sym">'+(CURRENCY_SYMBOLS[code]||'')+'</span>'
+      +'</div>';
+  }).join('');
+  if (!matches.length) drop.innerHTML = '<div style="padding:10px 12px;color:var(--muted);font-size:12px;">No match</div>';
+}
+function showCurDropdown(id) {
+  const drop = document.getElementById(id+'-drop');
+  if (drop) { drop.style.display='block'; buildCurDropdown(id, document.getElementById(id+'-inp')?.value||''); }
+}
+function hideCurDropdown(id) {
+  const drop = document.getElementById(id+'-drop');
+  if (drop) drop.style.display='none';
+}
+function filterCurDropdown(id) {
+  const inp = document.getElementById(id+'-inp');
+  buildCurDropdown(id, inp ? inp.value : '');
+  const drop = document.getElementById(id+'-drop');
+  if (drop) drop.style.display='block';
+}
+function selectCur(elOrId, code) {
+  let id, c2;
+  if (typeof elOrId === 'string') { id = elOrId; c2 = code; }
+  else { id = elOrId.dataset.id; c2 = elOrId.dataset.code; }
+  const hidden = document.getElementById(id);
+  const inp = document.getElementById(id+'-inp');
+  if (hidden) hidden.value = c2;
+  if (inp) inp.value = c2+' – '+(CUR_NAMES[c2]||c2);
+  hideCurDropdown(id);
+  if (id === 'new-cur-select' && typeof renderExpCurrencyChips === 'function') renderExpCurrencyChips();
+}
+function initCurWidget(id, defaultCode) {
+  const hidden = document.getElementById(id);
+  const inp = document.getElementById(id+'-inp');
+  const code = (hidden && hidden.value) || defaultCode || 'INR';
+  if (hidden) hidden.value = code;
+  if (inp) inp.value = code+' – '+(CUR_NAMES[code]||code);
+}
+function getCurVal(id) {
+  const hidden = document.getElementById(id);
+  return hidden ? hidden.value : 'INR';
+}
+
 // ============= INIT =============
 (function() {
 try { load(); } catch(e) { console.error('Load error:', e); }
@@ -3742,9 +3777,10 @@ if (!state.deletedTrips) state.deletedTrips = [];
 if (!state.deletedExpenses) state.deletedExpenses = [];
 if (!state.exchangeRates) state.exchangeRates = {};
 // Build currency selects from JS array
-const curOpts = ALL_CURRENCIES.map(c => '<option value="'+c+'">'+c+' – '+(CUR_NAMES[c]||c)+'</option>').join('');
-['inp-trip-currency','edit-budget-currency','new-cur-select'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = curOpts;
-});
+// Currency widgets are searchable - initialized via initCurWidget()
+initCurWidget('inp-trip-currency','INR');
+initCurWidget('edit-budget-currency','INR');
+initCurWidget('new-cur-select','INR');
 renderAll();
 populatePackCatSelect();
 populateExpCatSelects();
