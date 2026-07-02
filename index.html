@@ -2241,7 +2241,7 @@ function selectTripFor(id) {
   closeSheet('sheet-select-trip');
 }
 // ---- CURRENCY FORMATTING ----
-const CURRENCY_SYMBOLS = { USD:'$', EUR:'€', INR:'₹', GBP:'£', JPY:'¥', AED:'د.إ', SGD:'S$', THB:'฿', RUB:'₽', AUD:'A$' };
+const CURRENCY_SYMBOLS = {INR:'₹',USD:'$',EUR:'€',GBP:'£',AED:'د.إ',SGD:'S$',THB:'฿',JPY:'¥',RUB:'₽',AUD:'A$',CAD:'C$',CHF:'Fr',CNY:'¥',HKD:'HK$',MYR:'RM',IDR:'Rp',PHP:'₱',VND:'₫',KRW:'₩',NZD:'NZ$',ZAR:'R',TRY:'₺',SAR:'﷼',QAR:'﷼',KWD:'KD',BHD:'BD',OMR:'﷼',EGP:'E£',NPR:'₨',LKR:'₨',PKR:'₨',BDT:'৳',MMK:'K',KHR:'៛',LAK:'₭',BND:'B$',TWD:'NT$',MNT:'₮',GEL:'₾',AMD:'֏',AZN:'₼',KZT:'₸',UZS:'лв',ETB:'Br',KES:'KSh',TZS:'TSh',UGX:'USh',GHS:'₵',NGN:'₦',MXN:'$',BRL:'R$',ARS:'$',CLP:'$',COP:'$',PEN:'S/',SEK:'kr',NOK:'kr',DKK:'kr',PLN:'zł',CZK:'Kč',HUF:'Ft',RON:'lei',BGN:'лв',HRK:'kn',MAD:'MAD',TND:'TD',DZD:'DA',MUR:'₨',MZN:'MT'};
 function fmtCurrency(amount, cur) {
   const sym = CURRENCY_SYMBOLS[cur] || cur + ' ';
   if (!amount && amount !== 0) return '—';
@@ -2257,8 +2257,8 @@ function fmtCurrency(amount, cur) {
 // ---- CUSTOM EXPENSE CATEGORIES ----
 const DEFAULT_EXP_CATS = ['Food','Flight','Taxi / Transport','Hotel','Activity','Shopping','Other'];
 function getAllExpCats() { return [...DEFAULT_EXP_CATS, ...(state.customExpCats || [])]; }
-const ALL_CURRENCIES = ['USD','EUR','INR','GBP','JPY','AED','SGD','THB','RUB','AUD'];
-const CUR_NAMES = {USD:'US Dollar',EUR:'Euro',INR:'Indian Rupee',GBP:'British Pound',JPY:'Japanese Yen',AED:'UAE Dirham',SGD:'Singapore Dollar',THB:'Thai Baht',RUB:'Russian Ruble',AUD:'Australian Dollar'};
+const ALL_CURRENCIES = ['INR','USD','EUR','GBP','AED','SGD','THB','JPY','RUB','AUD','CAD','CHF','CNY','HKD','MYR','IDR','PHP','VND','KRW','NZD','ZAR','TRY','SAR','QAR','KWD','BHD','OMR','EGP','NPR','LKR','PKR','BDT','MMK','KHR','LAK','BND','TWD','MNT','GEL','AMD','AZN','KZT','UZS','ETB','KES','TZS','UGX','GHS','NGN','MXN','BRL','ARS','CLP','COP','PEN','SEK','NOK','DKK','PLN','CZK','HUF','RON','BGN','HRK','MAD','TND','DZD','MUR','MZN'];
+const CUR_NAMES = {INR:'Indian Rupee',USD:'US Dollar',EUR:'Euro',GBP:'British Pound',AED:'UAE Dirham',SGD:'Singapore Dollar',THB:'Thai Baht',JPY:'Japanese Yen',RUB:'Russian Ruble',AUD:'Australian Dollar',CAD:'Canadian Dollar',CHF:'Swiss Franc',CNY:'Chinese Yuan',HKD:'Hong Kong Dollar',MYR:'Malaysian Ringgit',IDR:'Indonesian Rupiah',PHP:'Philippine Peso',VND:'Vietnamese Dong',KRW:'South Korean Won',NZD:'New Zealand Dollar',ZAR:'South African Rand',TRY:'Turkish Lira',SAR:'Saudi Riyal',QAR:'Qatari Riyal',KWD:'Kuwaiti Dinar',BHD:'Bahraini Dinar',OMR:'Omani Rial',EGP:'Egyptian Pound',NPR:'Nepali Rupee',LKR:'Sri Lankan Rupee',PKR:'Pakistani Rupee',BDT:'Bangladeshi Taka',MMK:'Myanmar Kyat',KHR:'Cambodian Riel',LAK:'Lao Kip',BND:'Brunei Dollar',TWD:'Taiwan Dollar',MNT:'Mongolian Tugrik',GEL:'Georgian Lari',AMD:'Armenian Dram',AZN:'Azerbaijani Manat',KZT:'Kazakhstani Tenge',UZS:'Uzbekistani Som',ETB:'Ethiopian Birr',KES:'Kenyan Shilling',TZS:'Tanzanian Shilling',UGX:'Ugandan Shilling',GHS:'Ghanaian Cedi',NGN:'Nigerian Naira',MXN:'Mexican Peso',BRL:'Brazilian Real',ARS:'Argentine Peso',CLP:'Chilean Peso',COP:'Colombian Peso',PEN:'Peruvian Sol',SEK:'Swedish Krona',NOK:'Norwegian Krone',DKK:'Danish Krone',PLN:'Polish Zloty',CZK:'Czech Koruna',HUF:'Hungarian Forint',RON:'Romanian Leu',BGN:'Bulgarian Lev',HRK:'Croatian Kuna',MAD:'Moroccan Dirham',TND:'Tunisian Dinar',DZD:'Algerian Dinar',MUR:'Mauritian Rupee',MZN:'Mozambican Metical'};
 const CYCLE_LABELS = {calendar:'Calendar Year',anniversary:'Anniversary Year',quarter:'Per Quarter',never:'Lifetime'};
 const CUR_OPTIONS = ALL_CURRENCIES.map(c => `<option value="${c}">${c}</option>`).join('');
 function populateExpCatSelects() {
