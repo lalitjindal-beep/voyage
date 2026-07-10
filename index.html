@@ -1591,7 +1591,7 @@ function renderTripPicker() {
   const filtered = isOfficial ? state.trips.filter(t=>t.tripType==='official') : state.trips;
   if (isOfficial && !filtered.length) { container.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);">No official tours yet.<br>Create a trip and select Official Tour mode.</div>'; return; }
   const list = filtered.length ? filtered : state.trips;
-  container.innerHTML = list.map(t=>'<div class="trip-picker-item" onclick="selectTripFor(''+t.id+'')">'
+  container.innerHTML = list.map(t=>'<div class="trip-picker-item" onclick="selectTripFor(\''+t.id+'\')">'
     +t.emoji+' <b>'+t.dest+'</b>'
     +(t.tripType==='official'?' <span style="font-size:10px;background:#1E3A5F;color:white;border-radius:4px;padding:1px 5px;">💼</span>':'')
     +' <span style="font-size:11px;color:var(--muted);">'+(t.start?fmt(t.start):'')+'</span></div>'
