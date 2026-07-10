@@ -1584,17 +1584,17 @@ function quickSelectTrip(id) {
   showToast('Trip selected ✓');
 }
 function renderTripPicker() {
-  const list = document.getElementById('trip-picker-list');
-  if (!state.trips.length) { list.innerHTML = `<div class="empty-state"><div class="emoji">✈️</div><p>No trips yet. Add one first.</p></div>`; return; }
-  list.innerHTML = state.trips.map(t =>
-    `<div class="card" style="display:flex;align-items:center;gap:14px;cursor:pointer;" onclick="selectTripFor('${t.id}')">
-      <span style="font-size:28px;">${t.emoji}</span>
-      <div style="flex:1;">
-        <div style="font-weight:600;">${t.dest}</div>
-        <div style="font-size:12px;color:var(--muted);">${t.start ? fmt(t.start) : 'No date'}</div>
-      </div>
-      ${state.activeTripId[tripSelectContext] === t.id ? '<span style="color:var(--sky);font-size:20px;">✓</span>' : ''}
-    </div>`
+  const container = document.getElementById('trip-picker-list');
+  if (!container) return;
+  if (!state.trips.length) { container.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);">No trips yet</div>'; return; }
+  const isOfficial = tripSelectContext === 'official';
+  const filtered = isOfficial ? state.trips.filter(t=>t.tripType==='official') : state.trips;
+  if (isOfficial && !filtered.length) { container.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);">No official tours yet.<br>Create a trip and select Official Tour mode.</div>'; return; }
+  const list = filtered.length ? filtered : state.trips;
+  container.innerHTML = list.map(t=>'<div class="trip-picker-item" onclick="selectTripFor(''+t.id+'')">'
+    +t.emoji+' <b>'+t.dest+'</b>'
+    +(t.tripType==='official'?' <span style="font-size:10px;background:#1E3A5F;color:white;border-radius:4px;padding:1px 5px;">💼</span>':'')
+    +' <span style="font-size:11px;color:var(--muted);">'+(t.start?fmt(t.start):'')+'</span></div>'
   ).join('');
 }
 function getActiveTrip(ctx) {
@@ -2315,6 +2315,12 @@ function openSheet(id, ctx) {
     document.getElementById('btn-clear-api-key').style.display = saved ? 'block' : 'none';
     document.getElementById('api-key-status').style.display = 'none';
   }
+  else if (id === 'sheet-official-profile') {
+    const p = state.officialProfile||{};
+    const fields = {name:'prof-name',empId:'prof-empid',desig:'prof-desig',dept:'prof-dept',company:'prof-company'};
+    Object.keys(fields).forEach(k=>{ const el=document.getElementById(fields[k]); if(el) el.value=p[k]||''; });
+  }
+  else if (id === 'sheet-official-exp') { openOfficialExpSheet(); }
 }
 function selectTripFor(id) {
   state.activeTripId[tripSelectContext] = id;
@@ -3236,6 +3242,8 @@ const r = { id: uid(), title, note: document.getElementById('inp-rem-note').valu
 if (!state.reminders) state.reminders = [];
   if (!state.officialExpenses) state.officialExpenses = {};
   if (!state.officialProfile) state.officialProfile = {};
+  if (!state.officialExpenses) state.officialExpenses = {};
+  if (!state.officialProfile) state.officialProfile = {};
 state.reminders.push(r);
 save();
 scheduleNotification(r);
@@ -3973,29 +3981,6 @@ function buildTripDNA(tripId) {
   const legend='<div>'+top.slice(0,4).map(x=>'<div style="font-size:11px;display:flex;justify-content:space-between;padding:2px 0;"><span>'+icons[x.c]+' '+x.c+'</span><b style="color:var(--sky-dark);">'+x.p+'%</b></div>').join('')+'</div>';
   return '<div style="margin-top:12px;"><div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.5px;margin-bottom:6px;">🧬 TRIP DNA</div><div style="display:flex;align-items:center;gap:10px;">'+svg+legend+'</div></div>';
 }
-(function() {
-try { load(); } catch(e) { console.error('Load error:', e); }
-if (!state.activeTripId || typeof state.activeTripId !== 'object') state.activeTripId = {it:null, pk:null, bg:null, fl:null, docs:null};
-['it','pk','bg','fl','docs'].forEach(k => { if (!(k in state.activeTripId)) state.activeTripId[k] = null; });
-if (!state.moneyIn) state.moneyIn = {};
-if (!state.documents) state.documents = {};
-if (!state.loungeCards) state.loungeCards = [];
-if (!state.reminders) state.reminders = [];
-if (!state.customPackCats) state.customPackCats = [];
-if (!state.customExpCats) state.customExpCats = [];
-if (!state.deletedPackItems) state.deletedPackItems = [];
-if (!state.deletedReminders) state.deletedReminders = [];
-if (!state.deletedTrips) state.deletedTrips = [];
-if (!state.deletedExpenses) state.deletedExpenses = [];
-if (!state.exchangeRates) state.exchangeRates = {};
-initCurWidget('inp-trip-currency','INR');
-initCurWidget('edit-budget-currency','INR');
-initCurWidget('new-cur-select','INR');
-renderAll();
-populatePackCatSelect();
-populateExpCatSelects();
-try { rescheduleAll(); } catch(e) {}
-updateApiKeyIndicator();
 
 const OFF_CATS=['Hotel','DA','Flight','Taxi','Event','Incidental','Client','Pocket'];
 const OFF_ICONS={Hotel:'🏨',DA:'💰',Flight:'✈️',Taxi:'🚕',Event:'🎪',Incidental:'📎',Client:'🍽️',Pocket:'👜'};
@@ -4013,8 +3998,9 @@ function saveProfile(){
   save();closeSheet('sheet-official-profile');showToast('Profile saved ✅');
 }
 function getOfficialTrip(){
-  const id=state.activeTripId['official']||null;
-  return (id&&state.trips.find(t=>t.id===id&&t.tripType==='official'))||state.trips.find(t=>t.tripType==='official')||null;
+  const id=state.activeTripId['official']||state.activeTripId['bg']||null;
+  const byId=id?state.trips.find(t=>t.id===id&&t.tripType==='official'):null;
+  return byId||state.trips.find(t=>t.tripType==='official')||null;
 }
 function renderOfficial(){
   const selEl=document.getElementById('sel-trip-official'),container=document.getElementById('official-content');
@@ -4199,6 +4185,30 @@ function exportExpenseSummary(){
   document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
   showToast('Expense Summary exported ✅');
 }
+
+(function() {
+try { load(); } catch(e) { console.error('Load error:', e); }
+if (!state.activeTripId || typeof state.activeTripId !== 'object') state.activeTripId = {it:null, pk:null, bg:null, fl:null, docs:null};
+['it','pk','bg','fl','docs'].forEach(k => { if (!(k in state.activeTripId)) state.activeTripId[k] = null; });
+if (!state.moneyIn) state.moneyIn = {};
+if (!state.documents) state.documents = {};
+if (!state.loungeCards) state.loungeCards = [];
+if (!state.reminders) state.reminders = [];
+if (!state.customPackCats) state.customPackCats = [];
+if (!state.customExpCats) state.customExpCats = [];
+if (!state.deletedPackItems) state.deletedPackItems = [];
+if (!state.deletedReminders) state.deletedReminders = [];
+if (!state.deletedTrips) state.deletedTrips = [];
+if (!state.deletedExpenses) state.deletedExpenses = [];
+if (!state.exchangeRates) state.exchangeRates = {};
+initCurWidget('inp-trip-currency','INR');
+initCurWidget('edit-budget-currency','INR');
+initCurWidget('new-cur-select','INR');
+renderAll();
+populatePackCatSelect();
+populateExpCatSelects();
+try { rescheduleAll(); } catch(e) {}
+updateApiKeyIndicator();
 
 if ('Notification' in window) notifPermission = Notification.permission;
 })();
