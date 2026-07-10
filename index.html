@@ -451,6 +451,7 @@
 <div><div class="trip-selector-label">Current Trip</div><div class="trip-selector-name" id="sel-trip-bg">Select a trip</div></div>
 <span class="trip-selector-arrow">›</span>
 </div>
+<div id="budget-official-banner"></div>
 <!-- SEARCH + SORT -->
 <div style="display:flex;gap:8px;margin-bottom:12px;">
 <div style="position:relative;flex:1;">
@@ -558,6 +559,7 @@
   </div>
   <div id="official-content"></div>
 </div>
+<button class="fab" id="fab-official-add" onclick="openOfficialExpSheet()" style="display:none;" title="Add Official Expense">+</button>
 <div class="screen" id="screen-more">
 <div class="page-header">
 <div><div class="page-title">More 🔧</div></div>
@@ -1270,29 +1272,46 @@
   <div class="sheet-handle"></div>
   <div class="sheet-title" id="off-exp-sheet-title">Add Official Expense</div>
   <div class="sheet-body">
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">Date</label><input class="form-input" id="inp-off-date" type="date"/></div>
-      <div class="form-group"><label class="form-label">Category</label>
-        <select class="form-select" id="inp-off-cat">
-          <option value="Hotel">🏨 Hotel/Accommodation</option>
-          <option value="DA">💰 Daily Allowance (DA)</option>
-          <option value="Flight">✈️ Flight</option>
-          <option value="Taxi">🚕 Taxi/Transport</option>
-          <option value="Event">🎪 Exhibition/Event Fee</option>
-          <option value="Incidental">📎 Incidental</option>
-          <option value="Client">🍽️ Client Entertainment</option>
-          <option value="Pocket">👜 Pocket Money</option>
-        </select>
+    <div style="background:var(--surface2);border-radius:12px;padding:12px;margin-bottom:14px;">
+      <div style="font-size:12px;font-weight:700;color:var(--mid);margin-bottom:10px;">SET FOR ALL ITEMS BELOW</div>
+      <div class="form-group" style="margin-bottom:10px;"><label class="form-label">Date</label><input class="form-input" id="inp-off-date" type="date"/></div>
+      <div><label class="form-label">Paid In</label><div id="off-currency-chips" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;"></div></div>
+      <div style="margin-top:10px;"><label class="form-label">Payment Method</label><div id="off-pay-method-chips" style="display:flex;gap:7px;flex-wrap:wrap;margin-top:4px;"></div></div>
+      <div id="off-card-name-row" style="display:none;margin-top:8px;"><input class="form-input" id="inp-off-card-name" placeholder="Card name e.g. Axis Magnus" style="font-size:13px;"/></div>
+    </div>
+    <div id="off-multi-wrap">
+      <div style="font-size:12px;font-weight:700;color:var(--mid);margin-bottom:8px;">ITEMS <span style="font-weight:400;color:var(--muted);">(add as many as needed)</span></div>
+      <div id="off-multi-rows"></div>
+      <button onclick="addOffExpenseRow()" style="width:100%;padding:10px;border:1.5px dashed var(--border);border-radius:10px;background:none;color:var(--sky);font-size:13px;font-weight:600;cursor:pointer;margin-bottom:14px;font-family:inherit;">+ Add Another Item</button>
+      <div id="off-multi-total" style="display:none;background:var(--sky-light);border-radius:10px;padding:10px 14px;margin-bottom:12px;justify-content:space-between;align-items:center;">
+        <span style="font-size:13px;font-weight:600;color:var(--sky-dark);">Total</span>
+        <span id="off-multi-total-amount" style="font-size:16px;font-weight:800;color:var(--sky-dark);"></span>
       </div>
     </div>
-    <div class="form-group"><label class="form-label">Amount (₹)</label><input class="form-input" id="inp-off-amount" type="number" placeholder="0"/></div>
-    <div class="form-group"><label class="form-label">Purpose / Description</label><input class="form-input" id="inp-off-purpose" placeholder="e.g. Hotel stay 2 nights — Amari Pattaya"/></div>
-    <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;">
-      <label style="font-size:13px;font-weight:600;color:var(--slate);">Receipt attached?</label>
-      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="inp-off-receipt" style="width:18px;height:18px;accent-color:var(--sky);"/> <span style="font-size:13px;">Yes</span></label>
+    <div id="off-edit-wrap" style="display:none;">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Category</label>
+          <select class="form-select" id="inp-off-cat-edit">
+            <option value="Hotel">🏨 Hotel/Accommodation</option>
+            <option value="DA">💰 Daily Allowance (DA)</option>
+            <option value="Flight">✈️ Flight</option>
+            <option value="Taxi">🚕 Taxi/Transport</option>
+            <option value="Event">🎪 Exhibition/Event Fee</option>
+            <option value="Incidental">📎 Incidental</option>
+            <option value="Client">🍽️ Client Entertainment</option>
+            <option value="Pocket">👜 Pocket Money</option>
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Amount</label><input class="form-input" id="inp-off-amount-edit" type="number" placeholder="0"/></div>
+      </div>
+      <div class="form-group"><label class="form-label">Purpose / Description</label><input class="form-input" id="inp-off-purpose-edit" placeholder="e.g. Hotel stay 2 nights — Amari Pattaya"/></div>
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;">
+        <label style="font-size:13px;font-weight:600;color:var(--slate);">Receipt attached?</label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="inp-off-receipt-edit" style="width:18px;height:18px;accent-color:var(--sky);"/> <span style="font-size:13px;">Yes</span></label>
+      </div>
     </div>
     <input type="hidden" id="inp-off-edit-id"/>
-    <button class="btn-primary" onclick="saveOfficialExp()">Save Expense</button>
+    <button class="btn-primary" onclick="saveOfficialExp()">Save Expense(s)</button>
     <button id="off-exp-del-btn" onclick="deleteOfficialExp()" style="display:none;width:100%;padding:13px;background:var(--red-light);color:var(--red);border:none;border-radius:14px;font-size:15px;font-weight:600;cursor:pointer;margin-top:8px;font-family:inherit;">Delete</button>
   </div>
 </div>
@@ -1887,6 +1906,14 @@ function renderBudget() {
   const trip = getActiveTrip('bg');
   const selEl = document.getElementById('sel-trip-bg');
   selEl.textContent = trip ? trip.dest : 'Select a trip';
+  const bannerEl = document.getElementById('budget-official-banner');
+  if (bannerEl) {
+    bannerEl.innerHTML = (trip && trip.tripType === 'official') ?
+      '<div style="background:#1E3A5F;color:white;border-radius:12px;padding:10px 14px;margin-bottom:12px;font-size:12px;display:flex;justify-content:space-between;align-items:center;gap:10px;">'+
+      '<span>💼 This is an <b>Official Tour</b>. This Budget tab is for your <b>personal</b> spending only — company-reimbursable expenses (Hotel, DA, Flight, Taxi etc.) are tracked separately in the <b>Official tab</b>.</span>'+
+      '<button onclick="switchTab(\'official\')" style="flex-shrink:0;background:white;color:#1E3A5F;border:none;border-radius:8px;padding:6px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">Go →</button>'+
+      '</div>' : '';
+  }
   const container = document.getElementById('expenses-list');
   if (!trip) { container.innerHTML = `<div class="empty-state"><div class="emoji">💰</div><p>Select a trip to track expenses</p></div>`; updateBudgetBoxes(null, null); return; }
   const cur = trip.currency || 'USD';
@@ -4001,12 +4028,17 @@ function getOfficialTrip(){
   const byId=id?state.trips.find(t=>t.id===id&&t.tripType==='official'):null;
   return byId||state.trips.find(t=>t.tripType==='official')||null;
 }
+let offExpFilter='All';
+let offExpPageSize=25;
+function setOffExpFilter(cat){offExpFilter=cat;offExpPageSize=25;renderOfficial();}
 function renderOfficial(){
   const selEl=document.getElementById('sel-trip-official'),container=document.getElementById('official-content');
   if(!selEl||!container)return;
   const trip=getOfficialTrip();
+  const fab=document.getElementById('fab-official-add');
   selEl.textContent=trip?trip.dest:'Select an official tour';
-  if(!trip){container.innerHTML='<div class="empty-state"><div class="emoji">💼</div><p>No official tours yet.<br>Create a trip → select <b>Official Tour</b>.</p></div>';return;}
+  if(!trip){container.innerHTML='<div class="empty-state"><div class="emoji">💼</div><p>No official tours yet.<br>Create a trip → select <b>Official Tour</b>.</p></div>';if(fab)fab.style.display='none';return;}
+  if(fab)fab.style.display='flex';
   const expenses=state.officialExpenses?.[trip.id]||[];
   const imprestByCat=trip.imprestByCat||{};
   const imprest=OFF_CATS.reduce((s,k)=>s+(imprestByCat[k]||0),0);
@@ -4019,7 +4051,7 @@ function renderOfficial(){
   const totalReimb=OFF_CATS.filter(k=>OFF_REIMB[k]).reduce((s,k)=>s+catTotals[k],0);
   const netPayable=totalReimb-imprest;
   const pct=imprest?Math.min(100,Math.round(totalSpent/imprest*100)):0;
-  const fmtI=v=>'₹'+Math.round(v).toLocaleString('en-IN');
+  const fmtI=v=>(CURRENCY_SYMBOLS[trip.currency]||'₹')+Math.round(v).toLocaleString('en-IN');
   let html='<div class="card" style="margin-bottom:14px;">';
   html+='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">';
   html+='<div><div style="font-size:16px;font-weight:700;">'+trip.emoji+' '+trip.dest+'</div>';
@@ -4051,47 +4083,139 @@ function renderOfficial(){
   html+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">';
   html+='<div style="font-size:13px;font-weight:700;">📋 Expenses ('+expenses.length+')</div>';
   html+='<button onclick="openOfficialExpSheet()" style="background:var(--sky);color:white;border:none;border-radius:10px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">+ Add</button></div>';
-  const sorted=[...expenses].sort((a,b)=>a.date.localeCompare(b.date));
-  html+=sorted.map(e=>'<div class="card" style="display:flex;gap:10px;align-items:center;padding:10px 12px;margin-bottom:8px;"><span style="font-size:20px;">'+OFF_ICONS[e.cat]+'</span><div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:600;">'+e.purpose+'</div><div style="font-size:11px;color:var(--muted);">'+fmt(e.date)+' · '+e.cat+(e.receipt?' · 🧾':'')+'</div></div><div style="text-align:right;"><div style="font-size:14px;font-weight:700;">'+fmtI(e.amount)+'</div><span onclick="editOfficialExp(\''+trip.id+'\',\''+e.id+'\')" style="font-size:16px;cursor:pointer;color:var(--sky);">✏️</span></div></div>').join('');
-  if(daAuto)html+='<div class="card" style="padding:10px 12px;margin-bottom:8px;background:var(--sky-light);"><span style="font-size:13px;font-weight:600;">💰 DA (auto) — '+days+' days × ₹'+trip.daRate+'</span><div style="font-size:11px;color:var(--muted);">Calculated automatically</div><div style="font-size:14px;font-weight:700;text-align:right;">'+fmtI(daAuto)+'</div></div>';
+  // Category filter chips
+  html+='<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:6px;">';
+  html+='<div class="chip'+(offExpFilter==='All'?' active':'')+'" onclick="setOffExpFilter(\'All\')" style="flex-shrink:0;font-size:11px;padding:6px 11px;">All ('+expenses.length+')</div>';
+  OFF_CATS.forEach(cat=>{
+    const n=expenses.filter(e=>e.cat===cat).length;
+    if(!n)return;
+    html+='<div class="chip'+(offExpFilter===cat?' active':'')+'" onclick="setOffExpFilter(\''+cat+'\')" style="flex-shrink:0;font-size:11px;padding:6px 11px;">'+OFF_ICONS[cat]+' '+cat+' ('+n+')</div>';
+  });
+  html+='</div>';
+  const filtered=offExpFilter==='All'?expenses:expenses.filter(e=>e.cat===offExpFilter);
+  const sorted=[...filtered].sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
+  const visible=sorted.slice(0,offExpPageSize);
+  html+=visible.map(e=>'<div class="card" style="display:flex;gap:10px;align-items:center;padding:10px 12px;margin-bottom:8px;"><span style="font-size:20px;">'+OFF_ICONS[e.cat]+'</span><div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:600;">'+e.purpose+'</div><div style="font-size:11px;color:var(--muted);">'+fmt(e.date)+' · '+e.cat+(e.receipt?' · 🧾':'')+(e.payMethod?' · '+e.payMethod:'')+'</div></div><div style="text-align:right;"><div style="font-size:14px;font-weight:700;">'+fmtI(e.amount)+'</div><span onclick="editOfficialExp(\''+trip.id+'\',\''+e.id+'\')" style="font-size:16px;cursor:pointer;color:var(--sky);">✏️</span></div></div>').join('');
+  if(!sorted.length)html+='<div style="font-size:12px;color:var(--muted);padding:12px 0;text-align:center;">No expenses'+(offExpFilter!=='All'?' in this category':'')+' yet</div>';
+  if(sorted.length>visible.length)html+='<button onclick="offExpPageSize+=25;renderOfficial();" style="width:100%;padding:11px;border:1.5px dashed var(--border);border-radius:12px;background:none;color:var(--sky);font-size:13px;font-weight:600;cursor:pointer;margin-bottom:8px;font-family:inherit;">Show '+Math.min(25,sorted.length-visible.length)+' more ('+(sorted.length-visible.length)+' left)</button>';
+  if(daAuto)html+='<div class="card" style="padding:10px 12px;margin-bottom:8px;background:var(--sky-light);"><span style="font-size:13px;font-weight:600;">💰 DA (auto) — '+days+' days × '+(CURRENCY_SYMBOLS[trip.currency]||'₹')+trip.daRate+'</span><div style="font-size:11px;color:var(--muted);">Calculated automatically</div><div style="font-size:14px;font-weight:700;text-align:right;">'+fmtI(daAuto)+'</div></div>';
   html+='<button onclick="exportExpenseSummary()" style="width:100%;margin-top:8px;padding:13px;background:#E8F5E9;color:#2E7D32;border:1.5px solid #4CAF50;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">📊 Generate Summary</button>';
   container.innerHTML=html;
 }
+let offExpRowCount=0;
+let offSelectedCurrency=null;
+let offSelectedPayMethod='💵 Cash';
+function addOffExpenseRow(cat='Hotel',purpose='',amount=''){
+  offExpRowCount++;
+  const rowId='offrow-'+offExpRowCount;
+  const container=document.getElementById('off-multi-rows');
+  if(!container)return;
+  const div=document.createElement('div');
+  div.id=rowId;
+  div.style.cssText='background:white;border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px;';
+  div.innerHTML='<div style="display:flex;gap:8px;margin-bottom:6px;">'+
+    '<select class="form-select off-row-cat" style="flex:1.3;font-size:12px;padding:8px;">'+OFF_CATS.map(c=>'<option value="'+c+'"'+(c===cat?' selected':'')+'>'+OFF_ICONS[c]+' '+c+'</option>').join('')+'</select>'+
+    '<input class="form-input off-row-amount" type="number" placeholder="Amount" value="'+amount+'" style="flex:1;font-size:13px;" oninput="updateOffMultiTotal()"/>'+
+    '<button onclick="document.getElementById(\''+rowId+'\').remove();updateOffMultiTotal();" style="width:32px;height:38px;background:var(--red-light);color:var(--red);border:none;border-radius:8px;font-size:16px;cursor:pointer;flex-shrink:0;">×</button></div>'+
+    '<input class="form-input off-row-purpose" placeholder="Purpose / description" value="'+purpose+'" style="font-size:13px;margin-bottom:6px;width:100%;"/>'+
+    '<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);"><input type="checkbox" class="off-row-receipt" style="width:16px;height:16px;"/> Receipt attached</label>';
+  container.appendChild(div);
+  updateOffMultiTotal();
+}
+function updateOffMultiTotal(){
+  const rows=document.querySelectorAll('#off-multi-rows>div');
+  let total=0;
+  rows.forEach(row=>{total+=parseFloat(row.querySelector('.off-row-amount')?.value)||0;});
+  const totalEl=document.getElementById('off-multi-total-amount'),totalBox=document.getElementById('off-multi-total');
+  if(totalEl&&totalBox){
+    if(total>0){totalBox.style.display='flex';totalEl.textContent=(CURRENCY_SYMBOLS[offSelectedCurrency]||offSelectedCurrency||'')+' '+total.toLocaleString('en-IN');}
+    else totalBox.style.display='none';
+  }
+}
+function renderOffCurrencyChips(){
+  const trip=getOfficialTrip(),container=document.getElementById('off-currency-chips');
+  if(!trip||!container)return;
+  const baseCur=trip.currency||'INR';
+  const currencies=getTripCurrencies(trip.id);
+  if(!offSelectedCurrency||!currencies.includes(offSelectedCurrency))offSelectedCurrency=baseCur;
+  container.innerHTML=currencies.map(c=>'<div class="chip'+(c===offSelectedCurrency?' active':'')+'" onclick="selectOffCurrency(\''+c+'\')">'+(CURRENCY_SYMBOLS[c]||c)+' '+c+(c===baseCur?' (base)':'')+'</div>').join('');
+}
+function selectOffCurrency(c){offSelectedCurrency=c;renderOffCurrencyChips();updateOffMultiTotal();}
+function renderOffPayMethodChips(){
+  const el=document.getElementById('off-pay-method-chips');if(!el)return;
+  el.innerHTML=PAY_METHODS.map(m=>'<div class="chip'+(m===offSelectedPayMethod?' active':'')+'" onclick="selectOffPayMethod(\''+m+'\')" style="font-size:12px;padding:6px 12px;">'+m+'</div>').join('');
+  const cardRow=document.getElementById('off-card-name-row');if(cardRow)cardRow.style.display=offSelectedPayMethod==='💳 Credit Card'?'block':'none';
+}
+function selectOffPayMethod(m){offSelectedPayMethod=m;renderOffPayMethodChips();}
 function openOfficialExpSheet(editId){
   const trip=getOfficialTrip();if(!trip)return;
   const editEl=document.getElementById('inp-off-edit-id');
   const delBtn=document.getElementById('off-exp-del-btn');
   const titleEl=document.getElementById('off-exp-sheet-title');
+  const multiWrap=document.getElementById('off-multi-wrap');
+  const editWrap=document.getElementById('off-edit-wrap');
   if(editId){
     const exp=(state.officialExpenses?.[trip.id]||[]).find(e=>e.id===editId);if(!exp)return;
     if(editEl)editEl.value=editId;if(delBtn)delBtn.style.display='block';if(titleEl)titleEl.textContent='Edit Expense';
+    if(multiWrap)multiWrap.style.display='none';if(editWrap)editWrap.style.display='block';
     document.getElementById('inp-off-date').value=exp.date||'';
-    document.getElementById('inp-off-cat').value=exp.cat||'Hotel';
-    document.getElementById('inp-off-amount').value=exp.amount||'';
-    document.getElementById('inp-off-purpose').value=exp.purpose||'';
-    document.getElementById('inp-off-receipt').checked=!!exp.receipt;
+    document.getElementById('inp-off-cat-edit').value=exp.cat||'Hotel';
+    document.getElementById('inp-off-amount-edit').value=exp.amountOriginal??exp.amount??'';
+    document.getElementById('inp-off-purpose-edit').value=exp.purpose||'';
+    document.getElementById('inp-off-receipt-edit').checked=!!exp.receipt;
+    offSelectedCurrency=exp.currency||trip.currency||'INR';
+    offSelectedPayMethod=exp.payMethod||'💵 Cash';
+    const cardEl=document.getElementById('inp-off-card-name');if(cardEl)cardEl.value=exp.cardName||'';
   }else{
     if(editEl)editEl.value='';if(delBtn)delBtn.style.display='none';if(titleEl)titleEl.textContent='Add Official Expense';
+    if(multiWrap)multiWrap.style.display='block';if(editWrap)editWrap.style.display='none';
     document.getElementById('inp-off-date').value=new Date().toISOString().slice(0,10);
-    document.getElementById('inp-off-cat').value='Hotel';
-    document.getElementById('inp-off-amount').value='';
-    document.getElementById('inp-off-purpose').value='';
-    document.getElementById('inp-off-receipt').checked=false;
+    const rowsC=document.getElementById('off-multi-rows');if(rowsC)rowsC.innerHTML='';
+    offExpRowCount=0;
+    addOffExpenseRow();
+    offSelectedCurrency=trip.currency||'INR';
+    offSelectedPayMethod='💵 Cash';
+    const cardEl=document.getElementById('inp-off-card-name');if(cardEl)cardEl.value='';
   }
+  renderOffCurrencyChips();renderOffPayMethodChips();
   openSheet('sheet-official-exp');
 }
 function editOfficialExp(tripId,expId){if(state.activeTripId)state.activeTripId['official']=tripId;openOfficialExpSheet(expId);}
 function saveOfficialExp(){
   const trip=getOfficialTrip();if(!trip)return;
-  const amount=parseFloat(document.getElementById('inp-off-amount')?.value)||0;
-  if(!amount){showToast('Enter an amount');return;}
   const editId=document.getElementById('inp-off-edit-id')?.value||'';
-  const exp={id:editId||uid(),date:document.getElementById('inp-off-date')?.value||new Date().toISOString().slice(0,10),cat:document.getElementById('inp-off-cat')?.value||'Hotel',amount,purpose:document.getElementById('inp-off-purpose')?.value.trim()||'',receipt:document.getElementById('inp-off-receipt')?.checked||false};
+  const date=document.getElementById('inp-off-date')?.value||new Date().toISOString().slice(0,10);
+  const cur=offSelectedCurrency||trip.currency||'INR';
+  const baseCur=trip.currency||'INR';
+  const rates=state.exchangeRates?.[trip.id]||{};
+  const rate=rates[cur+'_to_'+baseCur]||(cur===baseCur?1:1);
+  const payMethod=offSelectedPayMethod;
+  const cardName=payMethod==='💳 Credit Card'?(document.getElementById('inp-off-card-name')?.value.trim()||''):'';
   if(!state.officialExpenses)state.officialExpenses={};
   if(!state.officialExpenses[trip.id])state.officialExpenses[trip.id]=[];
-  const idx=state.officialExpenses[trip.id].findIndex(e=>e.id===exp.id);
-  if(idx>=0)state.officialExpenses[trip.id][idx]=exp;else state.officialExpenses[trip.id].push(exp);
-  save();closeSheet('sheet-official-exp');renderOfficial();showToast(idx>=0?'Updated ✅':'Added ✅');
+  if(editId){
+    const amtOrig=parseFloat(document.getElementById('inp-off-amount-edit')?.value)||0;
+    if(!amtOrig){showToast('Enter an amount');return;}
+    const exp={id:editId,date,cat:document.getElementById('inp-off-cat-edit')?.value||'Hotel',amount:amtOrig*rate,amountOriginal:amtOrig,currency:cur,payMethod,cardName,purpose:document.getElementById('inp-off-purpose-edit')?.value.trim()||'',receipt:document.getElementById('inp-off-receipt-edit')?.checked||false};
+    const idx=state.officialExpenses[trip.id].findIndex(e=>e.id===editId);
+    if(idx>=0)state.officialExpenses[trip.id][idx]=exp;else state.officialExpenses[trip.id].push(exp);
+    save();closeSheet('sheet-official-exp');renderOfficial();showToast('Updated ✅');
+    return;
+  }
+  const rows=document.querySelectorAll('#off-multi-rows>div');
+  let count=0;
+  rows.forEach(row=>{
+    const cat=row.querySelector('.off-row-cat')?.value||'Hotel';
+    const amtOrig=parseFloat(row.querySelector('.off-row-amount')?.value)||0;
+    const purpose=row.querySelector('.off-row-purpose')?.value.trim()||'';
+    const receipt=row.querySelector('.off-row-receipt')?.checked||false;
+    if(amtOrig>0){
+      state.officialExpenses[trip.id].push({id:uid(),date,cat,amount:amtOrig*rate,amountOriginal:amtOrig,currency:cur,payMethod,cardName,purpose,receipt});
+      count++;
+    }
+  });
+  if(!count){showToast('Add at least one item with an amount');return;}
+  save();closeSheet('sheet-official-exp');renderOfficial();showToast(count+' expense'+(count>1?'s':'')+' saved ✅');
 }
 function deleteOfficialExp(){
   const trip=getOfficialTrip();if(!trip)return;
@@ -4131,7 +4255,7 @@ function exportExpenseSummary(){
   const totalReimb=OFF_CATS.filter(k=>OFF_REIMB[k]).reduce((s,k)=>s+catT[k],0);
   const net=totalReimb-imprest;
   const receipts=expenses.filter(e=>e.receipt).length;
-  const fmtI=v=>v?'₹'+Math.round(v).toLocaleString('en-IN'):'—';
+  const fmtI=v=>v?(CURRENCY_SYMBOLS[trip.currency]||'₹')+Math.round(v).toLocaleString('en-IN'):'—';
   const H='#1E3A5F';
   let html='<html><head><meta charset="UTF-8"><style>body{font-family:Arial;font-size:11pt;margin:30px}table{width:100%;border-collapse:collapse}th{background:'+H+';color:#fff;padding:8px 10px;text-align:left}td{padding:7px 10px;border:1px solid #ccc}tr:nth-child(even){background:#F5F5F5}.title{font-size:16pt;font-weight:bold;color:'+H+'}.tr{background:#E3F2FD;font-weight:bold}.settle{padding:14px;border-radius:8px;margin:16px 0}.sig{margin-top:40px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px}.sb{border-top:1px solid #999;padding-top:6px;font-size:10pt;color:#555}</style></head><body>';
   html+='<div class="title">OFFICIAL TOUR EXPENSE SUMMARY</div>';
@@ -4149,7 +4273,7 @@ function exportExpenseSummary(){
   html+='<br><b style="color:'+H+'">EXPENSE DETAILS</b><br><br>';
   html+='<table><tr><th>Date</th><th>Category</th><th>Description / Purpose</th><th style="text-align:right">Amount</th><th>Receipt</th></tr>';
   [...expenses].sort((a,b)=>a.date.localeCompare(b.date)).forEach(e=>{html+='<tr><td>'+fmt(e.date)+'</td><td>'+OFF_ICONS[e.cat]+' '+e.cat+'</td><td>'+e.purpose+'</td><td style="text-align:right">'+fmtI(e.amount)+'</td><td style="text-align:center">'+(e.receipt?'✅':'❌')+'</td></tr>';});
-  if(daAuto)html+='<tr style="background:#FFF8E1"><td colspan="2">💰 DA (Auto)</td><td>'+days+' days × ₹'+trip.daRate+'</td><td style="text-align:right">'+fmtI(daAuto)+'</td><td style="text-align:center">—</td></tr>';
+  if(daAuto)html+='<tr style="background:#FFF8E1"><td colspan="2">💰 DA (Auto)</td><td>'+days+' days × '+(CURRENCY_SYMBOLS[trip.currency]||'₹')+trip.daRate+'</td><td style="text-align:right">'+fmtI(daAuto)+'</td><td style="text-align:center">—</td></tr>';
   html+='<tr class="tr"><td colspan="3"><b>TOTAL</b></td><td style="text-align:right"><b>'+fmtI(totalSpent)+'</b></td><td></td></tr></table>';
   html+='<div class="sig"><div class="sb">Submitted by<br><br>'+(p.name||'')+'<br>Date: ___________</div><div class="sb">Verified by<br><br>Accounts<br>Date: ___________</div><div class="sb">Approved by<br><br>Manager<br>Date: ___________</div></div></body></html>';
   const blob=new Blob([html],{type:'application/vnd.ms-excel;charset=utf-8'});
