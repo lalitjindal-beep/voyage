@@ -1296,16 +1296,14 @@
     <button id="off-exp-del-btn" onclick="deleteOfficialExp()" style="display:none;width:100%;padding:13px;background:var(--red-light);color:var(--red);border:none;border-radius:14px;font-size:15px;font-weight:600;cursor:pointer;margin-top:8px;font-family:inherit;">Delete</button>
   </div>
 </div>
-<!-- Imprest / Requisition Sheet -->
+<!-- Imprest Sheet -->
 <div class="overlay" id="overlay-sheet-imprest" onclick="closeSheet('sheet-imprest')"></div>
 <div class="sheet" id="sheet-imprest">
   <div class="sheet-handle"></div>
-  <div class="sheet-title">💰 Imprest & Estimates</div>
+  <div class="sheet-title">💰 Imprest Taken</div>
   <div class="sheet-body">
-    <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:8px;">IMPREST TAKEN PER CATEGORY (₹)</div>
+    <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:8px;">HOW MUCH DID YOU TAKE FROM OFFICE, PER CATEGORY (₹)</div>
     <div id="imprest-inputs"></div>
-    <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:8px;margin-top:14px;">ESTIMATED AMOUNTS PER CATEGORY</div>
-    <div id="estimate-inputs"></div>
     <button class="btn-primary" onclick="saveImprest()">Save</button>
   </div>
 </div>
@@ -4010,7 +4008,6 @@ function renderOfficial(){
   selEl.textContent=trip?trip.dest:'Select an official tour';
   if(!trip){container.innerHTML='<div class="empty-state"><div class="emoji">💼</div><p>No official tours yet.<br>Create a trip → select <b>Official Tour</b>.</p></div>';return;}
   const expenses=state.officialExpenses?.[trip.id]||[];
-  const estimates=trip.estimates||{};
   const imprestByCat=trip.imprestByCat||{};
   const imprest=OFF_CATS.reduce((s,k)=>s+(imprestByCat[k]||0),0);
   const days=trip.start&&trip.end?Math.max(1,Math.round((new Date(trip.end+'T12:00')-new Date(trip.start+'T12:00'))/864e5)+1):0;
@@ -4037,17 +4034,17 @@ function renderOfficial(){
   html+='<div style="font-size:11px;color:var(--muted);margin-top:4px;">Reimbursable: '+fmtI(totalReimb)+' − Imprest: '+fmtI(imprest)+'</div></div>';
   html+='<div class="card" style="margin-bottom:14px;"><div style="font-size:13px;font-weight:700;color:var(--sky-dark);margin-bottom:10px;">📊 Category Breakdown</div>';
   OFF_CATS.forEach(cat=>{
-    const est=estimates[cat]||0,taken=imprestByCat[cat]||0,spent2=catTotals[cat]||0;
-    const base=taken||est,pct2=base?Math.min(100,Math.round(spent2/base*100)):0,over=base&&spent2>base;
+    const taken=imprestByCat[cat]||0,spent2=catTotals[cat]||0;
+    const pct2=taken?Math.min(100,Math.round(spent2/taken*100)):0,over=taken&&spent2>taken;
     const left=taken-spent2;
     html+='<div style="margin-bottom:10px;"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px;">';
     html+='<span style="font-weight:600;">'+OFF_ICONS[cat]+' '+cat+(OFF_REIMB[cat]?'':' <span style="font-size:9px;background:#eee;border-radius:4px;padding:1px 4px;color:#888;">personal</span>')+'</span>';
     html+='<b style="color:'+(over?'var(--red)':spent2>0?'var(--green)':'var(--muted)')+';">'+fmtI(spent2)+'</b>'+(over?' <span style="color:var(--red);font-size:10px;">▲</span>':'')+'</div>';
     html+='<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);">';
-    html+='<span>'+(est?'Est: '+fmtI(est)+(taken?' · ':''):'')+(taken?'Taken: '+fmtI(taken):(!est?'No imprest set':''))+'</span>';
+    html+='<span>'+(taken?'Taken: '+fmtI(taken):'No imprest set')+'</span>';
     html+=taken?'<span style="font-weight:700;color:'+(left<0?'var(--red)':'var(--green)')+';">'+(left<0?'Over '+fmtI(Math.abs(left)):'Left '+fmtI(left))+'</span>':'';
     html+='</div>';
-    if(base)html+='<div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden;margin-top:3px;"><div style="height:100%;width:'+pct2+'%;background:'+(over?'var(--red)':'var(--sky)')+';border-radius:3px;"></div></div>';
+    if(taken)html+='<div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden;margin-top:3px;"><div style="height:100%;width:'+pct2+'%;background:'+(over?'var(--red)':'var(--sky)')+';border-radius:3px;"></div></div>';
     html+='</div>';
   });
   html+='<div style="border-top:1.5px solid var(--border);padding-top:8px;display:flex;justify-content:space-between;font-size:13px;font-weight:700;"><span>TOTAL SPENT</span><span>'+fmtI(totalSpent)+'</span></div></div>';
@@ -4057,10 +4054,7 @@ function renderOfficial(){
   const sorted=[...expenses].sort((a,b)=>a.date.localeCompare(b.date));
   html+=sorted.map(e=>'<div class="card" style="display:flex;gap:10px;align-items:center;padding:10px 12px;margin-bottom:8px;"><span style="font-size:20px;">'+OFF_ICONS[e.cat]+'</span><div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:600;">'+e.purpose+'</div><div style="font-size:11px;color:var(--muted);">'+fmt(e.date)+' · '+e.cat+(e.receipt?' · 🧾':'')+'</div></div><div style="text-align:right;"><div style="font-size:14px;font-weight:700;">'+fmtI(e.amount)+'</div><span onclick="editOfficialExp(\''+trip.id+'\',\''+e.id+'\')" style="font-size:16px;cursor:pointer;color:var(--sky);">✏️</span></div></div>').join('');
   if(daAuto)html+='<div class="card" style="padding:10px 12px;margin-bottom:8px;background:var(--sky-light);"><span style="font-size:13px;font-weight:600;">💰 DA (auto) — '+days+' days × ₹'+trip.daRate+'</span><div style="font-size:11px;color:var(--muted);">Calculated automatically</div><div style="font-size:14px;font-weight:700;text-align:right;">'+fmtI(daAuto)+'</div></div>';
-  html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px;">';
-  html+='<button onclick="exportRequisition()" style="padding:12px;background:var(--sky-light);color:var(--sky-dark);border:1.5px solid var(--sky);border-radius:12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">📋 Requisition Form</button>';
-  html+='<button onclick="exportExpenseSummary()" style="padding:12px;background:#E8F5E9;color:#2E7D32;border:1.5px solid #4CAF50;border-radius:12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">📊 Expense Summary</button>';
-  html+='</div>';
+  html+='<button onclick="exportExpenseSummary()" style="width:100%;margin-top:8px;padding:13px;background:#E8F5E9;color:#2E7D32;border:1.5px solid #4CAF50;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">📊 Generate Summary</button>';
   container.innerHTML=html;
 }
 function openOfficialExpSheet(editId){
@@ -4113,11 +4107,6 @@ function openImprestSheet(){
     const imp=trip.imprestByCat||{};
     icont.innerHTML=OFF_CATS.map(cat=>'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;"><span style="width:110px;font-size:13px;">'+OFF_ICONS[cat]+' '+cat+'</span><input class="form-input" style="flex:1;font-size:13px;padding:7px;" type="number" placeholder="Taken ₹" value="'+(imp[cat]||'')+'" data-cat="'+cat+'"/></div>').join('');
   }
-  const cont=document.getElementById('estimate-inputs');
-  if(cont){
-    const est=trip.estimates||{};
-    cont.innerHTML=OFF_CATS.map(cat=>'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;"><span style="width:110px;font-size:13px;">'+OFF_ICONS[cat]+' '+cat+'</span><input class="form-input" style="flex:1;font-size:13px;padding:7px;" type="number" placeholder="Est. ₹" value="'+(est[cat]||'')+'" data-cat="'+cat+'"/></div>').join('');
-  }
   openSheet('sheet-imprest');
 }
 function saveImprest(){
@@ -4125,43 +4114,12 @@ function saveImprest(){
   const iinputs=document.querySelectorAll('#imprest-inputs input[data-cat]');
   trip.imprestByCat={};
   iinputs.forEach(inp=>{const v=parseFloat(inp.value)||0;if(v>0)trip.imprestByCat[inp.dataset.cat]=v;});
-  const inputs=document.querySelectorAll('#estimate-inputs input[data-cat]');
-  trip.estimates={};
-  inputs.forEach(inp=>{const v=parseFloat(inp.value)||0;if(v>0)trip.estimates[inp.dataset.cat]=v;});
   save();closeSheet('sheet-imprest');renderOfficial();showToast('Saved ✅');
-}
-function exportRequisition(){
-  const trip=getOfficialTrip();if(!trip)return;
-  const p=state.officialProfile||{};
-  const est=trip.estimates||{};
-  const days=trip.start&&trip.end?Math.max(1,Math.round((new Date(trip.end+'T12:00')-new Date(trip.start+'T12:00'))/864e5)+1):0;
-  const total=OFF_CATS.reduce((s,k)=>s+(est[k]||0),0);
-  const fmtI=v=>v?'₹'+Math.round(v).toLocaleString('en-IN'):'—';
-  const H='#1E3A5F';
-  let html='<html><head><meta charset="UTF-8"><style>body{font-family:Arial;font-size:11pt;margin:30px}table{width:100%;border-collapse:collapse}th{background:'+H+';color:#fff;padding:8px 10px;text-align:left}td{padding:7px 10px;border:1px solid #ccc}tr:nth-child(even){background:#F5F5F5}.title{font-size:16pt;font-weight:bold;color:'+H+'}.tr{background:#E3F2FD;font-weight:bold}.sig{margin-top:40px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px}.sb{border-top:1px solid #999;padding-top:6px;font-size:10pt;color:#555}</style></head><body>';
-  html+='<div class="title">CURRENCY / IMPREST REQUISITION FORM</div>';
-  html+='<table style="margin:16px 0;border:none"><tr><td style="border:none;width:50%"><b>Name:</b> '+(p.name||'_______')+'</td><td style="border:none"><b>Employee ID:</b> '+(p.empId||'_______')+'</td></tr>';
-  html+='<tr><td style="border:none"><b>Designation:</b> '+(p.desig||'_______')+'</td><td style="border:none"><b>Department:</b> '+(p.dept||'_______')+'</td></tr>';
-  html+='<tr><td style="border:none"><b>Destination:</b> '+trip.dest+'</td><td style="border:none"><b>Purpose:</b> '+(trip.purpose||'_______')+'</td></tr>';
-  html+='<tr><td style="border:none"><b>Dates:</b> '+(trip.start?fmt(trip.start):'')+' to '+(trip.end?fmt(trip.end):'')+' ('+days+' days)</td><td style="border:none"><b>Persons:</b> '+(trip.persons||1)+'</td></tr></table>';
-  html+='<table><tr><th>Category</th><th>Basis</th><th style="text-align:right">Estimated Amount (₹)</th></tr>';
-  OFF_CATS.forEach(cat=>{
-    const basis=cat==='DA'&&trip.daRate?days+' days × ₹'+trip.daRate+'/day':cat==='Hotel'?'As per booking':cat==='Flight'?'Airfare (both ways)':'As required';
-    html+='<tr><td>'+OFF_ICONS[cat]+' '+cat+'</td><td>'+basis+'</td><td style="text-align:right">'+fmtI(est[cat]||0)+'</td></tr>';
-  });
-  html+='<tr class="tr"><td colspan="2"><b>TOTAL IMPREST REQUESTED</b></td><td style="text-align:right"><b>'+fmtI(total)+'</b></td></tr></table>';
-  html+='<div class="sig"><div class="sb">Requested by<br><br>'+(p.name||'')+'<br>Date: ___________</div><div class="sb">Recommended by<br><br>Manager<br>Date: ___________</div><div class="sb">Approved by<br><br>Accounts<br>Date: ___________</div></div></body></html>';
-  const blob=new Blob([html],{type:'application/vnd.ms-excel;charset=utf-8'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');a.href=url;a.download='Requisition-'+trip.dest.replace(/[^a-z0-9]/gi,'-')+'.xls';
-  document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
-  showToast('Requisition exported ✅');
 }
 function exportExpenseSummary(){
   const trip=getOfficialTrip();if(!trip)return;
   const p=state.officialProfile||{};
   const expenses=state.officialExpenses?.[trip.id]||[];
-  const est=trip.estimates||{};
   const imprestByCat=trip.imprestByCat||{};
   const imprest=OFF_CATS.reduce((s,k)=>s+(imprestByCat[k]||0),0);
   const days=trip.start&&trip.end?Math.max(1,Math.round((new Date(trip.end+'T12:00')-new Date(trip.start+'T12:00'))/864e5)+1):0;
@@ -4181,12 +4139,12 @@ function exportExpenseSummary(){
   html+='<tr><td style="border:none"><b>Designation:</b> '+(p.desig||'_______')+'</td><td style="border:none"><b>Department:</b> '+(p.dept||'_______')+'</td></tr>';
   html+='<tr><td style="border:none"><b>Destination:</b> '+trip.dest+'</td><td style="border:none"><b>Purpose:</b> '+(trip.purpose||'')+'</td></tr>';
   html+='<tr><td style="border:none"><b>Dates:</b> '+(trip.start?fmt(trip.start):'')+' → '+(trip.end?fmt(trip.end):'')+' ('+days+' days)</td><td style="border:none"><b>Persons:</b> '+(trip.persons||1)+' · Receipts: '+receipts+'/'+expenses.length+'</td></tr></table>';
-  html+='<table><tr><th>Category</th><th style="text-align:right">Estimated</th><th style="text-align:right">Taken</th><th style="text-align:right">Actual</th><th style="text-align:right">Left</th><th>Reimb?</th></tr>';
+  html+='<table><tr><th>Category</th><th style="text-align:right">Taken</th><th style="text-align:right">Actual</th><th style="text-align:right">Left</th><th>Reimb?</th></tr>';
   OFF_CATS.forEach(cat=>{
-    const e2=est[cat]||0,tk=imprestByCat[cat]||0,a=catT[cat]||0,lf=tk-a;
-    html+='<tr><td>'+OFF_ICONS[cat]+' '+cat+'</td><td style="text-align:right">'+fmtI(e2)+'</td><td style="text-align:right">'+fmtI(tk)+'</td><td style="text-align:right">'+fmtI(a)+'</td><td style="text-align:right;color:'+(lf<0?'#C62828':'#2E7D32')+'">'+(tk?fmtI(lf):'—')+'</td><td style="text-align:center">'+(OFF_REIMB[cat]?'✅':'❌')+'</td></tr>';
+    const tk=imprestByCat[cat]||0,a=catT[cat]||0,lf=tk-a;
+    html+='<tr><td>'+OFF_ICONS[cat]+' '+cat+'</td><td style="text-align:right">'+fmtI(tk)+'</td><td style="text-align:right">'+fmtI(a)+'</td><td style="text-align:right;color:'+(lf<0?'#C62828':'#2E7D32')+'">'+(tk?fmtI(lf):'—')+'</td><td style="text-align:center">'+(OFF_REIMB[cat]?'✅':'❌')+'</td></tr>';
   });
-  html+='<tr class="tr"><td><b>TOTAL</b></td><td style="text-align:right"><b>'+fmtI(OFF_CATS.reduce((s,k)=>s+(est[k]||0),0))+'</b></td><td style="text-align:right"><b>'+fmtI(imprest)+'</b></td><td style="text-align:right"><b>'+fmtI(totalSpent)+'</b></td><td style="text-align:right"><b>'+fmtI(imprest-totalSpent)+'</b></td><td></td></tr></table>';
+  html+='<tr class="tr"><td><b>TOTAL</b></td><td style="text-align:right"><b>'+fmtI(imprest)+'</b></td><td style="text-align:right"><b>'+fmtI(totalSpent)+'</b></td><td style="text-align:right"><b>'+fmtI(imprest-totalSpent)+'</b></td><td></td></tr></table>';
   html+='<div class="settle" style="background:'+(net>=0?'#E8F5E9':'#FFEBEE')+';"><b>Total Reimbursable:</b> '+fmtI(totalReimb)+'<br><b>Less Imprest Received:</b> '+fmtI(imprest)+'<br><b style="font-size:13pt;color:'+(net>=0?'#2E7D32':'#C62828')+'">'+(net>=0?'AMOUNT DUE TO EMPLOYEE: '+fmtI(net):'REFUND TO COMPANY: '+fmtI(Math.abs(net)))+'</b></div>';
   html+='<br><b style="color:'+H+'">EXPENSE DETAILS</b><br><br>';
   html+='<table><tr><th>Date</th><th>Category</th><th>Description / Purpose</th><th style="text-align:right">Amount</th><th>Receipt</th></tr>';
