@@ -632,7 +632,7 @@
 <div id="official-extra-fields" style="display:none;">
   <div class="form-row">
     <div class="form-group"><label class="form-label">No. of Persons</label><input class="form-input" id="inp-trip-persons" type="number" value="1" min="1" placeholder="1"/></div>
-    <div class="form-group"><label class="form-label">DA Rate/Day (₹)</label><input class="form-input" id="inp-trip-da-rate" type="number" placeholder="e.g. 1500"/></div>
+    <div class="form-group"><label class="form-label">DA Spend Rate/Day (₹)</label><input class="form-input" id="inp-trip-da-rate" type="number" placeholder="e.g. 1500"/><div style="font-size:10px;color:var(--muted);margin-top:3px;">Auto-fills a daily allowance <b>expense</b> entry. Not the same as the Imprest DA rate (that's what you were <b>given</b>, set separately in the Official tab).</div></div>
   </div>
   <div class="form-group"><label class="form-label">Tour Purpose</label><input class="form-input" id="inp-trip-purpose" placeholder="e.g. Trade Exhibition Bangkok 2026"/></div>
 </div>
@@ -641,7 +641,7 @@
 <div class="form-group"><label class="form-label">Start Date</label><input class="form-input" id="inp-trip-start" type="date" /></div>
 <div class="form-group"><label class="form-label">End Date</label><input class="form-input" id="inp-trip-end" type="date" /></div>
 </div>
-<div class="form-group"><label class="form-label">Budget</label><input class="form-input" id="inp-trip-budget" type="number" placeholder="e.g. 2000" /></div>
+<div class="form-group"><label class="form-label" id="lbl-trip-budget">Budget</label><input class="form-input" id="inp-trip-budget" type="number" placeholder="e.g. 2000" /><div id="hint-trip-budget" style="display:none;font-size:11px;color:var(--muted);margin-top:4px;">Optional — only for tracking your own personal/pocket spending in the Budget tab. Company-reimbursable amounts are tracked separately via Imprest in the Official tab.</div></div>
 <div class="form-group">
 <label class="form-label">Currency</label>
 <div class="cur-search-wrap" style="position:relative;"><input class="form-input" id="inp-trip-currency-inp" placeholder="Search currency or country..." autocomplete="off" style="font-size:13px;" oninput="filterCurDropdown('inp-trip-currency')" onfocus="showCurDropdown('inp-trip-currency')" onblur="setTimeout(()=>hideCurDropdown('inp-trip-currency'),200)"/><input type="hidden" id="inp-trip-currency" value="INR"/><div id="inp-trip-currency-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:white;border:1.5px solid var(--sky);border-radius:10px;max-height:200px;overflow-y:auto;z-index:999;box-shadow:0 4px 20px rgba(0,0,0,.15);"></div></div>
@@ -1272,12 +1272,17 @@
   <div class="sheet-handle"></div>
   <div class="sheet-title">💰 Imprest Taken</div>
   <div class="sheet-body">
+    <div style="margin-bottom:12px;"><label class="form-label">Received In</label><div id="imprest-currency-chips" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;"></div></div>
     <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:8px;">CALCULATE: RATE/DAY × PERSONS × DAYS <span style="font-weight:400;">(or just type a Total directly)</span></div>
     <div class="form-row" style="margin-bottom:12px;">
       <div class="form-group" style="margin-bottom:0;"><label class="form-label">Persons</label><input class="form-input" id="imprest-persons" type="number" min="1" oninput="recalcAllImprest()"/></div>
       <div class="form-group" style="margin-bottom:0;"><label class="form-label">Days</label><input class="form-input" id="imprest-days" type="number" min="1" oninput="recalcAllImprest()"/></div>
     </div>
     <div id="imprest-inputs"></div>
+    <div id="imprest-grand-total" style="display:none;background:var(--sky-light);border-radius:10px;padding:10px 14px;margin-bottom:12px;justify-content:space-between;align-items:center;">
+      <span style="font-size:13px;font-weight:600;color:var(--sky-dark);">Grand Total</span>
+      <span id="imprest-grand-total-amount" style="font-size:16px;font-weight:800;color:var(--sky-dark);"></span>
+    </div>
     <button class="btn-primary" onclick="saveImprest()">Save</button>
   </div>
 </div>
@@ -4007,6 +4012,9 @@ function setTripType(type){
   if(pb){pb.style.cssText='flex:1;padding:10px;border-radius:12px;border:2px solid '+(type==='personal'?'var(--sky)':'var(--border)')+';background:'+(type==='personal'?'var(--sky)':'white')+';color:'+(type==='personal'?'white':'var(--mid)')+';font-weight:700;font-size:13px;cursor:pointer;font-family:inherit;';}
   if(ob){ob.style.cssText='flex:1;padding:10px;border-radius:12px;border:2px solid '+(type==='official'?'#1E3A5F':'var(--border)')+';background:'+(type==='official'?'#1E3A5F':'white')+';color:'+(type==='official'?'white':'var(--mid)')+';font-weight:700;font-size:13px;cursor:pointer;font-family:inherit;';}
   if(ef)ef.style.display=type==='official'?'block':'none';
+  const lbl=document.getElementById('lbl-trip-budget'),hint=document.getElementById('hint-trip-budget');
+  if(lbl)lbl.textContent=type==='official'?'Personal Spending Budget':'Budget';
+  if(hint)hint.style.display=type==='official'?'block':'none';
 }
 function saveProfile(){
   state.officialProfile={name:document.getElementById('prof-name')?.value.trim()||'',empId:document.getElementById('prof-empid')?.value.trim()||'',desig:document.getElementById('prof-desig')?.value.trim()||'',dept:document.getElementById('prof-dept')?.value.trim()||'',company:document.getElementById('prof-company')?.value.trim()||''};
@@ -4015,7 +4023,9 @@ function saveProfile(){
 function getOfficialTrip(){
   const id=state.activeTripId['official']||state.activeTripId['bg']||null;
   const byId=id?state.trips.find(t=>t.id===id&&t.tripType==='official'):null;
-  return byId||state.trips.find(t=>t.tripType==='official')||null;
+  if(byId)return byId;
+  const officials=state.trips.filter(t=>t.tripType==='official');
+  return officials.length===1?officials[0]:null;
 }
 let offExpFilter='All';
 let offExpPageSize=25;
@@ -4028,7 +4038,13 @@ function renderOfficial(){
   const trip=getOfficialTrip();
   const fab=document.getElementById('fab-official-add');
   selEl.textContent=trip?trip.dest:'Select an official tour';
-  if(!trip){container.innerHTML='<div class="empty-state"><div class="emoji">💼</div><p>No official tours yet.<br>Create a trip → select <b>Official Tour</b>.</p></div>';if(fab)fab.style.display='none';return;}
+  if(!trip){
+    const hasOfficials=state.trips.some(t=>t.tripType==='official');
+    container.innerHTML=hasOfficials?
+      '<div class="empty-state"><div class="emoji">💼</div><p>You have multiple official tours.<br>Tap above to <b>select one</b> before adding expenses.</p></div>':
+      '<div class="empty-state"><div class="emoji">💼</div><p>No official tours yet.<br>Create a trip → select <b>Official Tour</b>.</p></div>';
+    if(fab)fab.style.display='none';return;
+  }
   if(fab)fab.style.display='flex';
   const expenses=state.officialExpenses?.[trip.id]||[];
   const imprestByCat=trip.imprestByCat||{};
@@ -4049,12 +4065,12 @@ function renderOfficial(){
   html+='<div style="font-size:11px;color:var(--muted);">'+(trip.purpose||'')+'</div>';
   html+='<div style="font-size:11px;color:var(--muted);">'+(trip.start?fmt(trip.start)+' → '+fmt(trip.end||''):'')+' · '+(trip.persons||1)+' person'+(trip.persons>1?'s':'')+' · '+days+' days</div></div>';
   html+='<button onclick="openSheet(\'sheet-imprest\')" style="font-size:11px;padding:7px 12px;background:var(--sky-light);color:var(--sky-dark);border:1px solid var(--sky);border-radius:10px;cursor:pointer;font-family:inherit;">💰 Imprest</button></div>';
-  if(imprest){html+='<div style="margin-bottom:4px;"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px;"><span>Imprest: '+fmtI(imprest)+'</span><span>Spent: '+fmtI(totalSpent)+' ('+pct+'%)</span></div><div style="height:7px;background:var(--border);border-radius:4px;overflow:hidden;"><div style="height:100%;width:'+pct+'%;background:'+(pct>100?'var(--red)':pct>80?'var(--sand)':'var(--sky)')+';border-radius:4px;"></div></div></div>';}
+  if(imprest){html+='<div style="margin-bottom:4px;"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px;"><span>Imprest: '+fmtI(imprest)+'</span><span>Spent: '+fmtI(totalSpent)+' ('+pct+'%)</span></div><div style="height:7px;background:var(--border);border-radius:4px;overflow:hidden;"><div style="height:100%;width:'+pct+'%;background:'+(pct>100?'var(--red)':'var(--green)')+';border-radius:4px;"></div></div></div>';}
   html+='</div>';
-  html+='<div class="card" style="margin-bottom:14px;background:'+(netPayable>=0?'var(--green-light)':'var(--red-light)')+';border:1.5px solid '+(netPayable>=0?'var(--green)':'var(--red)')+';">';
-  html+='<div style="font-size:11px;font-weight:700;color:'+(netPayable>=0?'var(--green)':'var(--red)')+';margin-bottom:4px;">'+(netPayable>=0?'💵 DUE TO YOU':'🔄 REFUND TO COMPANY')+'</div>';
-  html+='<div style="font-size:26px;font-weight:800;color:'+(netPayable>=0?'var(--green)':'var(--red)')+';">'+fmtI(Math.abs(netPayable))+'</div>';
-  html+='<div style="font-size:11px;color:var(--muted);margin-top:4px;">Reimbursable: '+fmtI(totalReimb)+' − Imprest: '+fmtI(imprest)+'</div></div>';
+  html+='<div class="card" style="margin-bottom:14px;background:'+(netPayable>=0?'var(--red-light)':'var(--green-light)')+';border:1.5px solid '+(netPayable>=0?'var(--red)':'var(--green)')+';">';
+  html+='<div style="font-size:11px;font-weight:700;color:'+(netPayable>=0?'var(--red)':'var(--green)')+';margin-bottom:4px;">'+(netPayable>=0?'⚠️ YOU SPENT MORE THAN GIVEN':'✅ WITHIN LIMIT')+'</div>';
+  html+='<div style="font-size:26px;font-weight:800;color:'+(netPayable>=0?'var(--red)':'var(--green)')+';">'+fmtI(Math.abs(netPayable))+'</div>';
+  html+='<div style="font-size:11px;color:var(--muted);margin-top:4px;">'+(netPayable>=0?'Company should pay you this back':'You should return this to company')+'</div></div>';
   html+='<div class="card" style="margin-bottom:14px;">';
   html+='<div onclick="toggleOffBreakdown()" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;'+(offBreakdownExpanded?'margin-bottom:10px;':'')+'">';
   html+='<div style="font-size:13px;font-weight:700;color:var(--sky-dark);">📊 Category Breakdown</div>';
@@ -4063,16 +4079,17 @@ function renderOfficial(){
   if(offBreakdownExpanded){
   OFF_CATS.forEach(cat=>{
     const taken=imprestByCat[cat]||0,spent2=catTotals[cat]||0;
-    const pct2=taken?Math.min(100,Math.round(spent2/taken*100)):0,over=taken&&spent2>taken;
+    const over=taken?spent2>taken:spent2>0;
+    const pct2=taken?Math.min(100,Math.round(spent2/taken*100)):(spent2>0?100:0);
     const left=taken-spent2;
     html+='<div style="margin-bottom:10px;"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px;">';
     html+='<span style="font-weight:600;">'+OFF_ICONS[cat]+' '+cat+(OFF_REIMB[cat]?'':' <span style="font-size:9px;background:#eee;border-radius:4px;padding:1px 4px;color:#888;">personal</span>')+'</span>';
     html+='<b style="color:'+(over?'var(--red)':spent2>0?'var(--green)':'var(--muted)')+';">'+fmtI(spent2)+'</b>'+(over?' <span style="color:var(--red);font-size:10px;">▲</span>':'')+'</div>';
     html+='<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);">';
-    html+='<span>'+(taken?'Taken: '+fmtI(taken):'No imprest set')+'</span>';
-    html+=taken?'<span style="font-weight:700;color:'+(left<0?'var(--red)':'var(--green)')+';">'+(left<0?'Over '+fmtI(Math.abs(left)):'Left '+fmtI(left))+'</span>':'';
+    html+='<span>'+(taken?'Taken: '+fmtI(taken):'No imprest taken')+'</span>';
+    html+=taken?('<span style="font-weight:700;color:'+(left<0?'var(--red)':'var(--green)')+';">'+(left<0?'Over '+fmtI(Math.abs(left)):'Left '+fmtI(left))+'</span>'):(spent2>0?'<span style="font-weight:700;color:var(--red);">Out of pocket '+fmtI(spent2)+'</span>':'');
     html+='</div>';
-    if(taken)html+='<div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden;margin-top:3px;"><div style="height:100%;width:'+pct2+'%;background:'+(over?'var(--red)':'var(--sky)')+';border-radius:3px;"></div></div>';
+    html+='<div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden;margin-top:3px;"><div style="height:100%;width:'+pct2+'%;background:'+(over?'var(--red)':'var(--green)')+';border-radius:3px;"></div></div>';
     html+='</div>';
   });
   html+='<div style="border-top:1.5px solid var(--border);padding-top:8px;display:flex;justify-content:space-between;font-size:13px;font-weight:700;"><span>TOTAL SPENT</span><span>'+fmtI(totalSpent)+'</span></div>';
@@ -4115,28 +4132,41 @@ function openBudgetAddExpense(){
   openSheet('sheet-expense');
 }
 function editOfficialExp(tripId,expId){ openEditExpense(tripId,expId,'official'); }
+let imprestSelectedCurrency=null;
 function openImprestSheet(){
   const trip=getOfficialTrip();if(!trip)return;
   const days=trip.start&&trip.end?Math.max(1,Math.round((new Date(trip.end+'T12:00')-new Date(trip.start+'T12:00'))/864e5)+1):1;
   const pEl=document.getElementById('imprest-persons'),dEl=document.getElementById('imprest-days');
   if(pEl)pEl.value=trip.persons||1;
   if(dEl)dEl.value=days;
+  imprestSelectedCurrency=trip.imprestCurrency||trip.currency||'INR';
+  renderImprestCurrencyChips();
   const icont=document.getElementById('imprest-inputs');
   if(icont){
-    const imp=trip.imprestByCat||{};
+    const imp=trip.imprestByCatOriginal||trip.imprestByCat||{};
     const rates=trip.imprestRates||{};
     icont.innerHTML=OFF_CATS.map(cat=>
       '<div style="background:var(--surface2);border-radius:10px;padding:10px;margin-bottom:8px;">'+
-      '<div style="font-size:12px;font-weight:600;margin-bottom:6px;">'+OFF_ICONS[cat]+' '+cat+'</div>'+
+      '<div style="font-size:12px;font-weight:600;margin-bottom:6px;">'+OFF_ICONS[cat]+' '+cat+(cat==='DA'?' <span style="font-weight:400;color:var(--muted);">— allowance received</span>':'')+'</div>'+
       '<div style="display:flex;align-items:center;gap:6px;">'+
       '<input class="form-input imprest-rate" data-cat="'+cat+'" type="number" placeholder="Rate/day" value="'+(rates[cat]||'')+'" style="flex:1;font-size:12px;padding:8px;" oninput="recalcImprestRow(\''+cat+'\')"/>'+
       '<span style="font-size:10px;color:var(--muted);white-space:nowrap;">× P × D =</span>'+
-      '<input class="form-input imprest-total" data-cat="'+cat+'" type="number" placeholder="Total" value="'+(imp[cat]||'')+'" style="flex:1;font-size:13px;font-weight:700;padding:8px;"/>'+
-      '</div></div>'
+      '<input class="form-input imprest-total" data-cat="'+cat+'" type="number" placeholder="Total" value="'+(imp[cat]||'')+'" style="flex:1;font-size:13px;font-weight:700;padding:8px;" oninput="updateImprestGrandTotal()"/>'+
+      '</div>'+(cat==='DA'?'<div style="font-size:10px;color:var(--muted);margin-top:5px;">This is what you were <b>given</b> as DA. The DA <b>spend</b> auto-calc (in Add Trip) is separate.</div>':'')+'</div>'
     ).join('');
   }
+  updateImprestGrandTotal();
   openSheet('sheet-imprest');
 }
+function renderImprestCurrencyChips(){
+  const trip=getOfficialTrip(),container=document.getElementById('imprest-currency-chips');
+  if(!trip||!container)return;
+  const baseCur=trip.currency||'INR';
+  const currencies=getTripCurrencies(trip.id);
+  if(!imprestSelectedCurrency||!currencies.includes(imprestSelectedCurrency))imprestSelectedCurrency=baseCur;
+  container.innerHTML=currencies.map(c=>'<div class="chip'+(c===imprestSelectedCurrency?' active':'')+'" onclick="selectImprestCurrency(\''+c+'\')">'+(CURRENCY_SYMBOLS[c]||c)+' '+c+(c===baseCur?' (base)':'')+'</div>').join('');
+}
+function selectImprestCurrency(c){imprestSelectedCurrency=c;renderImprestCurrencyChips();updateImprestGrandTotal();}
 function recalcImprestRow(cat){
   const persons=parseFloat(document.getElementById('imprest-persons')?.value)||1;
   const days=parseFloat(document.getElementById('imprest-days')?.value)||1;
@@ -4144,21 +4174,38 @@ function recalcImprestRow(cat){
   const totalEl=document.querySelector('.imprest-total[data-cat="'+cat+'"]');
   const rate=parseFloat(rateEl?.value)||0;
   if(totalEl)totalEl.value=rate?Math.round(rate*persons*days):'';
+  updateImprestGrandTotal();
 }
 function recalcAllImprest(){
   OFF_CATS.forEach(cat=>{
     const rateEl=document.querySelector('.imprest-rate[data-cat="'+cat+'"]');
     if(rateEl&&parseFloat(rateEl.value)>0)recalcImprestRow(cat);
   });
+  updateImprestGrandTotal();
+}
+function updateImprestGrandTotal(){
+  const totalEls=document.querySelectorAll('.imprest-total[data-cat]');
+  let total=0;
+  totalEls.forEach(el=>{total+=parseFloat(el.value)||0;});
+  const box=document.getElementById('imprest-grand-total'),amtEl=document.getElementById('imprest-grand-total-amount');
+  if(box&&amtEl){
+    if(total>0){box.style.display='flex';amtEl.textContent=(CURRENCY_SYMBOLS[imprestSelectedCurrency]||imprestSelectedCurrency||'')+' '+total.toLocaleString('en-IN');}
+    else box.style.display='none';
+  }
 }
 function saveImprest(){
   const trip=getOfficialTrip();if(!trip)return;
   trip.persons=parseFloat(document.getElementById('imprest-persons')?.value)||trip.persons||1;
+  const cur=imprestSelectedCurrency||trip.currency||'INR';
+  const baseCur=trip.currency||'INR';
+  const rates=state.exchangeRates?.[trip.id]||{};
+  const rate=rates[cur+'_to_'+baseCur]||(cur===baseCur?1:1);
+  trip.imprestCurrency=cur;
   const rateEls=document.querySelectorAll('.imprest-rate[data-cat]');
   const totalEls=document.querySelectorAll('.imprest-total[data-cat]');
-  trip.imprestRates={};trip.imprestByCat={};
+  trip.imprestRates={};trip.imprestByCat={};trip.imprestByCatOriginal={};
   rateEls.forEach(el=>{const v=parseFloat(el.value)||0;if(v>0)trip.imprestRates[el.dataset.cat]=v;});
-  totalEls.forEach(el=>{const v=parseFloat(el.value)||0;if(v>0)trip.imprestByCat[el.dataset.cat]=v;});
+  totalEls.forEach(el=>{const v=parseFloat(el.value)||0;if(v>0){trip.imprestByCat[el.dataset.cat]=v*rate;trip.imprestByCatOriginal[el.dataset.cat]=v;}});
   save();closeSheet('sheet-imprest');renderOfficial();showToast('Saved ✅');
 }
 function exportExpenseSummary(){
@@ -4190,7 +4237,7 @@ function exportExpenseSummary(){
     html+='<tr><td>'+OFF_ICONS[cat]+' '+cat+'</td><td style="text-align:right">'+fmtI(tk)+'</td><td style="text-align:right">'+fmtI(a)+'</td><td style="text-align:right;color:'+(lf<0?'#C62828':'#2E7D32')+'">'+(tk?fmtI(lf):'—')+'</td><td style="text-align:center">'+(OFF_REIMB[cat]?'✅':'❌')+'</td></tr>';
   });
   html+='<tr class="tr"><td><b>TOTAL</b></td><td style="text-align:right"><b>'+fmtI(imprest)+'</b></td><td style="text-align:right"><b>'+fmtI(totalSpent)+'</b></td><td style="text-align:right"><b>'+fmtI(imprest-totalSpent)+'</b></td><td></td></tr></table>';
-  html+='<div class="settle" style="background:'+(net>=0?'#E8F5E9':'#FFEBEE')+';"><b>Total Reimbursable:</b> '+fmtI(totalReimb)+'<br><b>Less Imprest Received:</b> '+fmtI(imprest)+'<br><b style="font-size:13pt;color:'+(net>=0?'#2E7D32':'#C62828')+'">'+(net>=0?'AMOUNT DUE TO EMPLOYEE: '+fmtI(net):'REFUND TO COMPANY: '+fmtI(Math.abs(net)))+'</b></div>';
+  html+='<div class="settle" style="background:'+(net>=0?'#FFEBEE':'#E8F5E9')+';"><b>Total Reimbursable:</b> '+fmtI(totalReimb)+'<br><b>Less Imprest Received:</b> '+fmtI(imprest)+'<br><b style="font-size:13pt;color:'+(net>=0?'#C62828':'#2E7D32')+'">'+(net>=0?'AMOUNT DUE TO EMPLOYEE: '+fmtI(net):'REFUND TO COMPANY: '+fmtI(Math.abs(net)))+'</b></div>';
   html+='<br><b style="color:'+H+'">EXPENSE DETAILS</b><br><br>';
   html+='<table><tr><th>Date</th><th>Category</th><th>Description / Purpose</th><th style="text-align:right">Amount</th><th>Receipt</th></tr>';
   [...expenses].sort((a,b)=>a.date.localeCompare(b.date)).forEach(e=>{html+='<tr><td>'+fmt(e.date)+'</td><td>'+OFF_ICONS[e.cat]+' '+e.cat+'</td><td>'+e.purpose+'</td><td style="text-align:right">'+fmtI(e.amount)+'</td><td style="text-align:center">'+(e.receipt?'✅':'❌')+'</td></tr>';});
