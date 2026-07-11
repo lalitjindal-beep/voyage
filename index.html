@@ -1308,7 +1308,9 @@ let state = {
   deletedTrips: [],
   deletedExpenses: [],
   exchangeRates: {},
-  activeTripId: { it: null, pk: null, bg: null, fl: null, docs: null, split: null }
+  officialExpenses: {},
+  officialProfile: {},
+  activeTripId: { it: null, pk: null, bg: null, fl: null, docs: null, split: null, official: null }
 };
 const STORAGE_KEY = 'voyage_v2';
 let selectedEmoji = '🗼';
@@ -1491,7 +1493,11 @@ function confirmDeleteTrip() {
     packingList: state.packingLists[id] || [],
     expenses: state.expenses[id] || [],
     flights: state.flights[id] || [],
-    hotels: state.hotels[id] || []
+    hotels: state.hotels[id] || [],
+    officialExpenses: state.officialExpenses?.[id] || [],
+    documents: state.documents?.[id] || [],
+    moneyIn: state.moneyIn?.[id] || [],
+    exchangeRates: state.exchangeRates?.[id] || {}
   });
   state.trips = state.trips.filter(t => t.id !== id);
   delete state.itineraries[id];
@@ -1499,7 +1505,11 @@ function confirmDeleteTrip() {
   delete state.expenses[id];
   delete state.flights[id];
   delete state.hotels[id];
-  ['it','pk','bg','fl','docs','split'].forEach(k => {
+  if (state.officialExpenses) delete state.officialExpenses[id];
+  if (state.documents) delete state.documents[id];
+  if (state.moneyIn) delete state.moneyIn[id];
+  if (state.exchangeRates) delete state.exchangeRates[id];
+  ['it','pk','bg','fl','docs','split','official'].forEach(k => {
     if (state.activeTripId[k] === id) state.activeTripId[k] = state.trips[0]?.id || null;
   });
   save(); renderAll();
@@ -1527,19 +1537,31 @@ function renderTripTrash() {
 function restoreTrip(id) {
   const idx = (state.deletedTrips || []).findIndex(t => t.id === id);
   if (idx === -1) return;
-  const { deletedAt, itinerary, packingList, expenses, flights, hotels, ...trip } = state.deletedTrips[idx];
+  const { deletedAt, itinerary, packingList, expenses, flights, hotels, officialExpenses, documents, moneyIn, exchangeRates, ...trip } = state.deletedTrips[idx];
   state.trips.push(trip);
   state.itineraries[id] = itinerary;
   state.packingLists[id] = packingList;
   state.expenses[id] = expenses;
   state.flights[id] = flights;
   state.hotels[id] = hotels;
+  if (!state.officialExpenses) state.officialExpenses = {};
+  if (!state.documents) state.documents = {};
+  if (!state.moneyIn) state.moneyIn = {};
+  if (!state.exchangeRates) state.exchangeRates = {};
+  state.officialExpenses[id] = officialExpenses || [];
+  state.documents[id] = documents || [];
+  state.moneyIn[id] = moneyIn || [];
+  state.exchangeRates[id] = exchangeRates || {};
   state.deletedTrips.splice(idx, 1);
   save(); renderAll(); renderTripTrash();
   showToast('Trip restored ✅');
 }
 function permanentDeleteTrip(id) {
   state.deletedTrips = (state.deletedTrips || []).filter(t => t.id !== id);
+  if (state.officialExpenses) delete state.officialExpenses[id];
+  if (state.documents) delete state.documents[id];
+  if (state.moneyIn) delete state.moneyIn[id];
+  if (state.exchangeRates) delete state.exchangeRates[id];
   save(); renderTripTrash();
   showToast('Permanently deleted');
 }
@@ -2461,9 +2483,25 @@ function saveEditBudget() {
   const trip = getActiveTrip('bg');
   if (!trip) { showToast('Select a trip first'); return; }
   const amount = parseFloat(document.getElementById('edit-budget-amount').value);
-  const currency = document.getElementById('edit-budget-currency').value;
+  const newCurrency = document.getElementById('edit-budget-currency').value;
   if (!amount) { showToast('Enter a budget amount'); return; }
-  trip.budget = amount; trip.currency = currency;
+  const oldCurrency = trip.currency;
+  if (oldCurrency && newCurrency && oldCurrency !== newCurrency) {
+    const rateInput = prompt('Changing currency from '+oldCurrency+' to '+newCurrency+'.\n\nTo keep all existing amounts correct, enter the exchange rate:\n1 '+oldCurrency+' = ? '+newCurrency, '1');
+    const rate = parseFloat(rateInput);
+    if (!rateInput || !rate || rate <= 0) { showToast('Currency change cancelled — a rate is required'); return; }
+    (state.expenses[trip.id]||[]).forEach(e => { e.amountBase = (e.amountBase ?? e.amount) * rate; });
+    (state.officialExpenses?.[trip.id]||[]).forEach(e => { e.amount = e.amount * rate; });
+    if (trip.imprestByCat) Object.keys(trip.imprestByCat).forEach(k => { trip.imprestByCat[k] *= rate; });
+    if (trip.daRate) trip.daRate = trip.daRate * rate;
+    (state.moneyIn?.[trip.id]||[]).forEach(m => { m.amount = m.amount * rate; });
+    trip.budget = amount; trip.currency = newCurrency;
+    save(); renderBudget(); renderOfficial(); populateExpCatSelects();
+    closeSheet('sheet-edit-budget');
+    showToast('Currency changed — amounts recalculated ✅');
+    return;
+  }
+  trip.budget = amount; trip.currency = newCurrency;
   save(); renderBudget(); populateExpCatSelects();
   closeSheet('sheet-edit-budget');
   showToast('Budget updated ✅');
@@ -3350,18 +3388,31 @@ reader.onload = function(e) {
         state.hotels[pt.id] = parsed.hotels?.[pt.id] || [];
         if (parsed.documents?.[pt.id]) state.documents[pt.id] = parsed.documents[pt.id];
         if (parsed.moneyIn?.[pt.id]) state.moneyIn[pt.id] = parsed.moneyIn[pt.id];
+        if (parsed.officialExpenses?.[pt.id]) { if (!state.officialExpenses) state.officialExpenses = {}; state.officialExpenses[pt.id] = parsed.officialExpenses[pt.id]; }
+        if (parsed.exchangeRates?.[pt.id]) { if (!state.exchangeRates) state.exchangeRates = {}; state.exchangeRates[pt.id] = parsed.exchangeRates[pt.id]; }
         added++;
       } else {
-        ['expenses','itineraries','packingLists','flights','hotels'].forEach(key => {
+        ['expenses','itineraries','packingLists','flights','hotels','officialExpenses','documents','moneyIn'].forEach(key => {
           const incoming = parsed[key]?.[pt.id] || [];
+          if (!state[key]) state[key] = {};
           const existing = state[key][pt.id] || [];
           const existingIdSet = new Set(existing.map(x=>x.id));
           incoming.forEach(item => { if (!existingIdSet.has(item.id)) { existing.push(item); merged++; } });
           state[key][pt.id] = existing;
         });
+        if (parsed.exchangeRates?.[pt.id]) {
+          if (!state.exchangeRates) state.exchangeRates = {};
+          state.exchangeRates[pt.id] = { ...(parsed.exchangeRates[pt.id]), ...(state.exchangeRates[pt.id]||{}) };
+        }
       }
     });
     (parsed.reminders||[]).forEach(r => { if (!state.reminders.find(x=>x.id===r.id)) state.reminders.push(r); });
+    if (parsed.officialProfile && (!state.officialProfile || !Object.values(state.officialProfile).some(Boolean))) {
+      state.officialProfile = parsed.officialProfile;
+    }
+    ['customExpCats','customPackCats'].forEach(key => {
+      (parsed[key]||[]).forEach(c => { if (!state[key]) state[key]=[]; if (!state[key].includes(c)) state[key].push(c); });
+    });
     save(); renderAll();
     showToast(added||merged ? `Merged: ${added} new trip(s), ${merged} new item(s) ✅` : 'Already up to date');
   } catch(err) { showToast('Failed to read file'); }
