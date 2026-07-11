@@ -444,7 +444,7 @@
 <button class="header-btn" style="background:#1D6F42;color:white;font-size:13px;font-weight:700;" title="Export to Excel" onclick="exportBudgetExcel()">XLS</button>
 <button class="header-btn" style="background:var(--green-light);color:var(--green);font-size:13px;font-weight:700;" title="Money Received / Cash" onclick="openSheet('sheet-money-in')">💵</button>
 <button class="header-btn" style="background:var(--surface2);color:var(--sky);font-size:14px;font-weight:700;" onclick="openSheet('sheet-edit-budget')">Edit</button>
-<button class="header-btn" onclick="openSheet('sheet-expense')">+</button>
+<button class="header-btn" onclick="openBudgetAddExpense()">+</button>
 </div>
 </div>
 <div id="trip-selector-bg" class="trip-selector" onclick="openSheet('sheet-select-trip', 'bg')">
@@ -558,8 +558,8 @@
     <span style="color:var(--sky);">▼</span>
   </div>
   <div id="official-content"></div>
+  <button class="fab" id="fab-official-add" onclick="openOfficialAddExpense()" style="display:none;" title="Add Official Expense">+</button>
 </div>
-<button class="fab" id="fab-official-add" onclick="openOfficialExpSheet()" style="display:none;" title="Add Official Expense">+</button>
 <div class="screen" id="screen-more">
 <div class="page-header">
 <div><div class="page-title">More 🔧</div></div>
@@ -742,7 +742,7 @@
 <div class="overlay" id="overlay-sheet-expense" onclick="closeSheet('sheet-expense')"></div>
 <div class="sheet" id="sheet-expense">
 <div class="sheet-handle"></div>
-<div class="sheet-title">Add Expenses</div>
+<div class="sheet-title" id="expense-sheet-title">Add Expenses</div>
 <div class="sheet-body">
 <!-- Bill Scan -->
 <div style="margin-bottom:14px;">
@@ -799,7 +799,7 @@
 <div class="overlay" id="overlay-sheet-edit-expense" onclick="closeSheet('sheet-edit-expense')"></div>
 <div class="sheet" id="sheet-edit-expense">
 <div class="sheet-handle"></div>
-<div class="sheet-title">Edit Expense</div>
+<div class="sheet-title" id="edit-expense-sheet-title">Edit Expense</div>
 <div class="sheet-body">
 <input type="hidden" id="edit-exp-trip-id" />
 <input type="hidden" id="edit-exp-id" />
@@ -1266,62 +1266,17 @@
     <button class="btn-primary" onclick="saveProfile()">Save Profile</button>
   </div>
 </div>
-<!-- Official Expense Entry Sheet -->
-<div class="overlay" id="overlay-sheet-official-exp" onclick="closeSheet('sheet-official-exp')"></div>
-<div class="sheet" id="sheet-official-exp">
-  <div class="sheet-handle"></div>
-  <div class="sheet-title" id="off-exp-sheet-title">Add Official Expense</div>
-  <div class="sheet-body">
-    <div style="background:var(--surface2);border-radius:12px;padding:12px;margin-bottom:14px;">
-      <div style="font-size:12px;font-weight:700;color:var(--mid);margin-bottom:10px;">SET FOR ALL ITEMS BELOW</div>
-      <div class="form-group" style="margin-bottom:10px;"><label class="form-label">Date</label><input class="form-input" id="inp-off-date" type="date"/></div>
-      <div><label class="form-label">Paid In</label><div id="off-currency-chips" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;"></div></div>
-      <div style="margin-top:10px;"><label class="form-label">Payment Method</label><div id="off-pay-method-chips" style="display:flex;gap:7px;flex-wrap:wrap;margin-top:4px;"></div></div>
-      <div id="off-card-name-row" style="display:none;margin-top:8px;"><input class="form-input" id="inp-off-card-name" placeholder="Card name e.g. Axis Magnus" style="font-size:13px;"/></div>
-    </div>
-    <div id="off-multi-wrap">
-      <div style="font-size:12px;font-weight:700;color:var(--mid);margin-bottom:8px;">ITEMS <span style="font-weight:400;color:var(--muted);">(add as many as needed)</span></div>
-      <div id="off-multi-rows"></div>
-      <button onclick="addOffExpenseRow()" style="width:100%;padding:10px;border:1.5px dashed var(--border);border-radius:10px;background:none;color:var(--sky);font-size:13px;font-weight:600;cursor:pointer;margin-bottom:14px;font-family:inherit;">+ Add Another Item</button>
-      <div id="off-multi-total" style="display:none;background:var(--sky-light);border-radius:10px;padding:10px 14px;margin-bottom:12px;justify-content:space-between;align-items:center;">
-        <span style="font-size:13px;font-weight:600;color:var(--sky-dark);">Total</span>
-        <span id="off-multi-total-amount" style="font-size:16px;font-weight:800;color:var(--sky-dark);"></span>
-      </div>
-    </div>
-    <div id="off-edit-wrap" style="display:none;">
-      <div class="form-row">
-        <div class="form-group"><label class="form-label">Category</label>
-          <select class="form-select" id="inp-off-cat-edit">
-            <option value="Hotel">🏨 Hotel/Accommodation</option>
-            <option value="DA">💰 Daily Allowance (DA)</option>
-            <option value="Flight">✈️ Flight</option>
-            <option value="Taxi">🚕 Taxi/Transport</option>
-            <option value="Event">🎪 Exhibition/Event Fee</option>
-            <option value="Incidental">📎 Incidental</option>
-            <option value="Client">🍽️ Client Entertainment</option>
-            <option value="Pocket">👜 Pocket Money</option>
-          </select>
-        </div>
-        <div class="form-group"><label class="form-label">Amount</label><input class="form-input" id="inp-off-amount-edit" type="number" placeholder="0"/></div>
-      </div>
-      <div class="form-group"><label class="form-label">Purpose / Description</label><input class="form-input" id="inp-off-purpose-edit" placeholder="e.g. Hotel stay 2 nights — Amari Pattaya"/></div>
-      <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;">
-        <label style="font-size:13px;font-weight:600;color:var(--slate);">Receipt attached?</label>
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="inp-off-receipt-edit" style="width:18px;height:18px;accent-color:var(--sky);"/> <span style="font-size:13px;">Yes</span></label>
-      </div>
-    </div>
-    <input type="hidden" id="inp-off-edit-id"/>
-    <button class="btn-primary" onclick="saveOfficialExp()">Save Expense(s)</button>
-    <button id="off-exp-del-btn" onclick="deleteOfficialExp()" style="display:none;width:100%;padding:13px;background:var(--red-light);color:var(--red);border:none;border-radius:14px;font-size:15px;font-weight:600;cursor:pointer;margin-top:8px;font-family:inherit;">Delete</button>
-  </div>
-</div>
 <!-- Imprest Sheet -->
 <div class="overlay" id="overlay-sheet-imprest" onclick="closeSheet('sheet-imprest')"></div>
 <div class="sheet" id="sheet-imprest">
   <div class="sheet-handle"></div>
   <div class="sheet-title">💰 Imprest Taken</div>
   <div class="sheet-body">
-    <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:8px;">HOW MUCH DID YOU TAKE FROM OFFICE, PER CATEGORY (₹)</div>
+    <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:8px;">CALCULATE: RATE/DAY × PERSONS × DAYS <span style="font-weight:400;">(or just type a Total directly)</span></div>
+    <div class="form-row" style="margin-bottom:12px;">
+      <div class="form-group" style="margin-bottom:0;"><label class="form-label">Persons</label><input class="form-input" id="imprest-persons" type="number" min="1" oninput="recalcAllImprest()"/></div>
+      <div class="form-group" style="margin-bottom:0;"><label class="form-label">Days</label><input class="form-input" id="imprest-days" type="number" min="1" oninput="recalcAllImprest()"/></div>
+    </div>
     <div id="imprest-inputs"></div>
     <button class="btn-primary" onclick="saveImprest()">Save</button>
   </div>
@@ -2060,7 +2015,7 @@ function getTripCurrencies(tripId) {
   return [baseCur, ...extra];
 }
 function renderExpCurrencyChips() {
-  const trip = getActiveTrip('bg');
+  const trip = expCtxTrip();
   const container = document.getElementById('exp-currency-chips');
   if (!trip || !container) return;
   const baseCur = trip.currency || 'USD';
@@ -2080,6 +2035,7 @@ function selectExpCurrency(c) {
 function checkDuplicateExpense(val) {
   const warn = document.getElementById('exp-duplicate-warning');
   if (!warn) return;
+  if (expenseCtx === 'official') { warn.style.display = 'none'; return; }
   const trip = getActiveTrip('bg');
   if (!trip || !val.trim()) { warn.style.display = 'none'; return; }
   const q = val.trim().toLowerCase();
@@ -2141,7 +2097,7 @@ function updateMultiTotal() {
     const amt = parseFloat(row.querySelectorAll('input')[1]?.value) || 0;
     total += amt;
   });
-  const trip = getActiveTrip('bg');
+  const trip = expCtxTrip();
   const expCur = selectedExpCurrency || trip?.currency || '';
   const baseCur = trip?.currency || '';
   const totalEl = document.getElementById('multi-total-amount');
@@ -2215,7 +2171,7 @@ function openCardReport() {
   }).join('');
 }
 function saveMultiExpense() {
-  const trip = getActiveTrip('bg');
+  const trip = expCtxTrip();
   if (!trip) { showToast('Select a trip first'); return; }
   const cat = document.getElementById('inp-exp-cat').value;
   const date = document.getElementById('inp-exp-date').value;
@@ -2225,17 +2181,28 @@ function saveMultiExpense() {
   const rate = rates[expCur + '_to_' + baseCur] || (expCur === baseCur ? 1 : 1);
   const rows = document.querySelectorAll('#multi-expense-rows > div');
   let count = 0;
+  const payMethod = selectedPayMethod;
+  const cardName = payMethod==='💳 Credit Card'?(document.getElementById('inp-exp-card-name')?.value.trim()||''):'';
+  if (expenseCtx === 'official') {
+    if (!state.officialExpenses) state.officialExpenses = {};
+    if (!state.officialExpenses[trip.id]) state.officialExpenses[trip.id] = [];
+  }
   rows.forEach(row => {
     const inputs = row.querySelectorAll('input');
     const name = inputs[0]?.value.trim();
     const amount = parseFloat(inputs[1]?.value);
     if (name && amount) {
-      state.expenses[trip.id].push({ id: uid(), name, amount, amountBase: amount*rate, cat, date, currency: expCur, payMethod: selectedPayMethod, cardName: selectedPayMethod==='💳 Credit Card'?(document.getElementById('inp-exp-card-name')?.value.trim()||''):'' });
+      if (expenseCtx === 'official') {
+        state.officialExpenses[trip.id].push({ id: uid(), purpose: name, amount: amount*rate, amountOriginal: amount, cat, date, currency: expCur, payMethod, cardName, receipt: false });
+      } else {
+        state.expenses[trip.id].push({ id: uid(), name, amount, amountBase: amount*rate, cat, date, currency: expCur, payMethod, cardName });
+      }
       count++;
     }
   });
   if (!count) { showToast('Add at least one item with description and amount'); return; }
-  save(); renderBudget();
+  save();
+  if (expenseCtx === 'official') renderOfficial(); else renderBudget();
   closeSheet('sheet-expense');
   showToast(`${count} expense${count>1?'s':''} saved ✅`);
 }
@@ -2346,7 +2313,6 @@ function openSheet(id, ctx) {
     const fields = {name:'prof-name',empId:'prof-empid',desig:'prof-desig',dept:'prof-dept',company:'prof-company'};
     Object.keys(fields).forEach(k=>{ const el=document.getElementById(fields[k]); if(el) el.value=p[k]||''; });
   }
-  else if (id === 'sheet-official-exp') { openOfficialExpSheet(); }
 }
 function selectTripFor(id) {
   state.activeTripId[tripSelectContext] = id;
@@ -2373,13 +2339,12 @@ const CUR_NAMES = {INR:'Indian Rupee',USD:'US Dollar',EUR:'Euro',GBP:'British Po
 const CYCLE_LABELS = {calendar:'Calendar Year',anniversary:'Anniversary Year',quarter:'Per Quarter',never:'Lifetime'};
 const CUR_OPTIONS = ALL_CURRENCIES.map(c => `<option value="${c}">${c}</option>`).join('');
 function populateExpCatSelects() {
-  const cats = getAllExpCats();
+  const cats = expCtxCats();
   ['inp-exp-cat','edit-exp-cat'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.innerHTML = cats.map(c => `<option value="${c}">${c}</option>`).join('');
+    if (el) el.innerHTML = cats.map(c => `<option value="${c}">${expCtxCatLabel(c)}</option>`).join('');
   });
-  renderCustomExpCatTags();
-  renderExpenseFilterChips();
+  if (expenseCtx==='budget') { renderCustomExpCatTags(); renderExpenseFilterChips(); }
 }
 function renderCustomExpCatTags() {
   const el = document.getElementById('custom-exp-cats-display');
@@ -2511,7 +2476,7 @@ function resetExpenseForm() {
   document.getElementById('bill-preview').style.display = 'none';
   const inp = document.getElementById('bill-camera-input');
   if (inp) inp.value = '';
-  const trip = getActiveTrip('bg');
+  const trip = expCtxTrip();
   selectedExpCurrency = trip?.currency || null;
   selectedPayMethod = '💵 Cash';
   populateExpCatSelects();
@@ -2522,6 +2487,8 @@ function resetExpenseForm() {
   if (cardRow) cardRow.style.display = 'none';
   const cardInp = document.getElementById('inp-exp-card-name');
   if (cardInp) cardInp.value = '';
+  const titleEl = document.getElementById('expense-sheet-title');
+  if (titleEl) titleEl.textContent = expenseCtx==='official' ? 'Add Official Expense' : 'Add Expenses';
   setTimeout(() => addExpenseRow(), 50);
 }
 const API_KEY_STORAGE = 'voyage_openrouter_key';
@@ -2724,13 +2691,15 @@ function checkDuplicateExpenseEdit(val) {
       matches.map(m => `&nbsp;&nbsp;• <b>${m.name}</b> <span style="color:#a07820;">(${fmtCurrency(m.amount, m.currency || trip?.currency)} · ${m.cat})</span>`).join('<br>');
   } else { warn.style.display = 'none'; }
 }
-function openEditExpense(tripId, expId) {
-  const exp = (state.expenses[tripId] || []).find(e => e.id === expId);
+function openEditExpense(tripId, expId, ctx) {
+  expenseCtx = ctx || 'budget';
+  const store = expenseCtx === 'official' ? (state.officialExpenses?.[tripId]||[]) : (state.expenses[tripId] || []);
+  const exp = store.find(e => e.id === expId);
   if (!exp) return;
   document.getElementById('edit-exp-trip-id').value = tripId;
   document.getElementById('edit-exp-id').value = expId;
-  document.getElementById('edit-exp-name').value = exp.name;
-  document.getElementById('edit-exp-amount').value = exp.amount;
+  document.getElementById('edit-exp-name').value = expenseCtx==='official' ? (exp.purpose||'') : exp.name;
+  document.getElementById('edit-exp-amount').value = expenseCtx==='official' ? (exp.amountOriginal??exp.amount) : exp.amount;
   document.getElementById('edit-exp-date').value = exp.date || '';
   populateExpCatSelects();
   document.getElementById('edit-exp-cat').value = exp.cat;
@@ -2740,6 +2709,8 @@ function openEditExpense(tripId, expId) {
   renderEditExpCurrencyChips(tripId, expCur);
   const warn = document.getElementById('edit-exp-duplicate-warning');
   if (warn) warn.style.display = 'none';
+  const titleEl = document.getElementById('edit-expense-sheet-title');
+  if (titleEl) titleEl.textContent = expenseCtx==='official' ? 'Edit Official Expense' : 'Edit Expense';
   openSheet('sheet-edit-expense');
   renderEditPayMethodChips(exp.payMethod || '💵 Cash');
   const cnEl = document.getElementById('edit-exp-card-name');
@@ -2773,18 +2744,30 @@ function saveEditExpense() {
   const baseCur = trip?.currency || 'USD';
   const rates = state.exchangeRates?.[tripId] || {};
   const rate = rates[expCur + '_to_' + baseCur] || (expCur === baseCur ? 1 : 1);
-  const exp = (state.expenses[tripId] || []).find(e => e.id === expId);
-  if (exp) {
-    exp.name = name; exp.amount = amount;
-    exp.cat = document.getElementById('edit-exp-cat').value;
-    exp.date = document.getElementById('edit-exp-date').value;
-    exp.currency = expCur;
-    exp.amountBase = amount * rate;
-    const pm = document.getElementById('edit-exp-pay-method')?.value || selectedEditPayMethod || '💵 Cash';
-    exp.payMethod = pm;
-    exp.cardName = pm === '💳 Credit Card' ? (document.getElementById('edit-exp-card-name')?.value.trim()||'') : '';
+  const pm = document.getElementById('edit-exp-pay-method')?.value || selectedEditPayMethod || '💵 Cash';
+  const cardName = pm === '💳 Credit Card' ? (document.getElementById('edit-exp-card-name')?.value.trim()||'') : '';
+  if (expenseCtx === 'official') {
+    const exp = (state.officialExpenses?.[tripId]||[]).find(e => e.id === expId);
+    if (exp) {
+      exp.purpose = name; exp.amountOriginal = amount; exp.amount = amount*rate;
+      exp.cat = document.getElementById('edit-exp-cat').value;
+      exp.date = document.getElementById('edit-exp-date').value;
+      exp.currency = expCur; exp.payMethod = pm; exp.cardName = cardName;
+    }
+    save(); renderOfficial();
+  } else {
+    const exp = (state.expenses[tripId] || []).find(e => e.id === expId);
+    if (exp) {
+      exp.name = name; exp.amount = amount;
+      exp.cat = document.getElementById('edit-exp-cat').value;
+      exp.date = document.getElementById('edit-exp-date').value;
+      exp.currency = expCur;
+      exp.amountBase = amount * rate;
+      exp.payMethod = pm;
+      exp.cardName = cardName;
+    }
+    save(); renderBudget();
   }
-  save(); renderBudget();
   closeSheet('sheet-edit-expense');
   showToast('Expense updated ✅');
 }
@@ -2792,7 +2775,13 @@ function deleteFromEditExpense() {
   const tripId = document.getElementById('edit-exp-trip-id').value;
   const expId = document.getElementById('edit-exp-id').value;
   closeSheet('sheet-edit-expense');
-  delExpense(tripId, expId);
+  if (expenseCtx === 'official') {
+    if (!confirm('Delete this expense?')) return;
+    if (state.officialExpenses?.[tripId]) state.officialExpenses[tripId] = state.officialExpenses[tripId].filter(e=>e.id!==expId);
+    save(); renderOfficial(); showToast('Deleted');
+  } else {
+    delExpense(tripId, expId);
+  }
 }
 function exportBudgetExcel() {
   const trip = getActiveTrip('bg');
@@ -4030,6 +4019,8 @@ function getOfficialTrip(){
 }
 let offExpFilter='All';
 let offExpPageSize=25;
+let offBreakdownExpanded=true;
+function toggleOffBreakdown(){offBreakdownExpanded=!offBreakdownExpanded;renderOfficial();}
 function setOffExpFilter(cat){offExpFilter=cat;offExpPageSize=25;renderOfficial();}
 function renderOfficial(){
   const selEl=document.getElementById('sel-trip-official'),container=document.getElementById('official-content');
@@ -4064,7 +4055,12 @@ function renderOfficial(){
   html+='<div style="font-size:11px;font-weight:700;color:'+(netPayable>=0?'var(--green)':'var(--red)')+';margin-bottom:4px;">'+(netPayable>=0?'💵 DUE TO YOU':'🔄 REFUND TO COMPANY')+'</div>';
   html+='<div style="font-size:26px;font-weight:800;color:'+(netPayable>=0?'var(--green)':'var(--red)')+';">'+fmtI(Math.abs(netPayable))+'</div>';
   html+='<div style="font-size:11px;color:var(--muted);margin-top:4px;">Reimbursable: '+fmtI(totalReimb)+' − Imprest: '+fmtI(imprest)+'</div></div>';
-  html+='<div class="card" style="margin-bottom:14px;"><div style="font-size:13px;font-weight:700;color:var(--sky-dark);margin-bottom:10px;">📊 Category Breakdown</div>';
+  html+='<div class="card" style="margin-bottom:14px;">';
+  html+='<div onclick="toggleOffBreakdown()" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;'+(offBreakdownExpanded?'margin-bottom:10px;':'')+'">';
+  html+='<div style="font-size:13px;font-weight:700;color:var(--sky-dark);">📊 Category Breakdown</div>';
+  html+='<span style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;">'+(offBreakdownExpanded?'':fmtI(totalSpent)+' total')+'<span style="font-size:15px;">'+(offBreakdownExpanded?'▲':'▼')+'</span></span>';
+  html+='</div>';
+  if(offBreakdownExpanded){
   OFF_CATS.forEach(cat=>{
     const taken=imprestByCat[cat]||0,spent2=catTotals[cat]||0;
     const pct2=taken?Math.min(100,Math.round(spent2/taken*100)):0,over=taken&&spent2>taken;
@@ -4079,10 +4075,12 @@ function renderOfficial(){
     if(taken)html+='<div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden;margin-top:3px;"><div style="height:100%;width:'+pct2+'%;background:'+(over?'var(--red)':'var(--sky)')+';border-radius:3px;"></div></div>';
     html+='</div>';
   });
-  html+='<div style="border-top:1.5px solid var(--border);padding-top:8px;display:flex;justify-content:space-between;font-size:13px;font-weight:700;"><span>TOTAL SPENT</span><span>'+fmtI(totalSpent)+'</span></div></div>';
+  html+='<div style="border-top:1.5px solid var(--border);padding-top:8px;display:flex;justify-content:space-between;font-size:13px;font-weight:700;"><span>TOTAL SPENT</span><span>'+fmtI(totalSpent)+'</span></div>';
+  }
+  html+='</div>';
   html+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">';
   html+='<div style="font-size:13px;font-weight:700;">📋 Expenses ('+expenses.length+')</div>';
-  html+='<button onclick="openOfficialExpSheet()" style="background:var(--sky);color:white;border:none;border-radius:10px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">+ Add</button></div>';
+  html+='<button onclick="openOfficialAddExpense()" style="background:var(--sky);color:white;border:none;border-radius:10px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">+ Add</button></div>';
   // Category filter chips
   html+='<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:6px;">';
   html+='<div class="chip'+(offExpFilter==='All'?' active':'')+'" onclick="setOffExpFilter(\'All\')" style="flex-shrink:0;font-size:11px;padding:6px 11px;">All ('+expenses.length+')</div>';
@@ -4102,142 +4100,65 @@ function renderOfficial(){
   html+='<button onclick="exportExpenseSummary()" style="width:100%;margin-top:8px;padding:13px;background:#E8F5E9;color:#2E7D32;border:1.5px solid #4CAF50;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">📊 Generate Summary</button>';
   container.innerHTML=html;
 }
-let offExpRowCount=0;
-let offSelectedCurrency=null;
-let offSelectedPayMethod='💵 Cash';
-function addOffExpenseRow(cat='Hotel',purpose='',amount=''){
-  offExpRowCount++;
-  const rowId='offrow-'+offExpRowCount;
-  const container=document.getElementById('off-multi-rows');
-  if(!container)return;
-  const div=document.createElement('div');
-  div.id=rowId;
-  div.style.cssText='background:white;border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px;';
-  div.innerHTML='<div style="display:flex;gap:8px;margin-bottom:6px;">'+
-    '<select class="form-select off-row-cat" style="flex:1.3;font-size:12px;padding:8px;">'+OFF_CATS.map(c=>'<option value="'+c+'"'+(c===cat?' selected':'')+'>'+OFF_ICONS[c]+' '+c+'</option>').join('')+'</select>'+
-    '<input class="form-input off-row-amount" type="number" placeholder="Amount" value="'+amount+'" style="flex:1;font-size:13px;" oninput="updateOffMultiTotal()"/>'+
-    '<button onclick="document.getElementById(\''+rowId+'\').remove();updateOffMultiTotal();" style="width:32px;height:38px;background:var(--red-light);color:var(--red);border:none;border-radius:8px;font-size:16px;cursor:pointer;flex-shrink:0;">×</button></div>'+
-    '<input class="form-input off-row-purpose" placeholder="Purpose / description" value="'+purpose+'" style="font-size:13px;margin-bottom:6px;width:100%;"/>'+
-    '<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);"><input type="checkbox" class="off-row-receipt" style="width:16px;height:16px;"/> Receipt attached</label>';
-  container.appendChild(div);
-  updateOffMultiTotal();
+let expenseCtx='budget';
+function expCtxTrip(){ return expenseCtx==='official' ? getOfficialTrip() : getActiveTrip('bg'); }
+function expCtxCats(){ return expenseCtx==='official' ? OFF_CATS : getAllExpCats(); }
+function expCtxCatLabel(c){ return expenseCtx==='official' ? (OFF_ICONS[c]||'')+' '+c : c; }
+function openOfficialAddExpense(){
+  const trip=getOfficialTrip();
+  if(!trip){showToast('Select an official tour first');return;}
+  expenseCtx='official';
+  openSheet('sheet-expense');
 }
-function updateOffMultiTotal(){
-  const rows=document.querySelectorAll('#off-multi-rows>div');
-  let total=0;
-  rows.forEach(row=>{total+=parseFloat(row.querySelector('.off-row-amount')?.value)||0;});
-  const totalEl=document.getElementById('off-multi-total-amount'),totalBox=document.getElementById('off-multi-total');
-  if(totalEl&&totalBox){
-    if(total>0){totalBox.style.display='flex';totalEl.textContent=(CURRENCY_SYMBOLS[offSelectedCurrency]||offSelectedCurrency||'')+' '+total.toLocaleString('en-IN');}
-    else totalBox.style.display='none';
-  }
+function openBudgetAddExpense(){
+  expenseCtx='budget';
+  openSheet('sheet-expense');
 }
-function renderOffCurrencyChips(){
-  const trip=getOfficialTrip(),container=document.getElementById('off-currency-chips');
-  if(!trip||!container)return;
-  const baseCur=trip.currency||'INR';
-  const currencies=getTripCurrencies(trip.id);
-  if(!offSelectedCurrency||!currencies.includes(offSelectedCurrency))offSelectedCurrency=baseCur;
-  container.innerHTML=currencies.map(c=>'<div class="chip'+(c===offSelectedCurrency?' active':'')+'" onclick="selectOffCurrency(\''+c+'\')">'+(CURRENCY_SYMBOLS[c]||c)+' '+c+(c===baseCur?' (base)':'')+'</div>').join('');
-}
-function selectOffCurrency(c){offSelectedCurrency=c;renderOffCurrencyChips();updateOffMultiTotal();}
-function renderOffPayMethodChips(){
-  const el=document.getElementById('off-pay-method-chips');if(!el)return;
-  el.innerHTML=PAY_METHODS.map(m=>'<div class="chip'+(m===offSelectedPayMethod?' active':'')+'" onclick="selectOffPayMethod(\''+m+'\')" style="font-size:12px;padding:6px 12px;">'+m+'</div>').join('');
-  const cardRow=document.getElementById('off-card-name-row');if(cardRow)cardRow.style.display=offSelectedPayMethod==='💳 Credit Card'?'block':'none';
-}
-function selectOffPayMethod(m){offSelectedPayMethod=m;renderOffPayMethodChips();}
-function openOfficialExpSheet(editId){
-  const trip=getOfficialTrip();if(!trip)return;
-  const editEl=document.getElementById('inp-off-edit-id');
-  const delBtn=document.getElementById('off-exp-del-btn');
-  const titleEl=document.getElementById('off-exp-sheet-title');
-  const multiWrap=document.getElementById('off-multi-wrap');
-  const editWrap=document.getElementById('off-edit-wrap');
-  if(editId){
-    const exp=(state.officialExpenses?.[trip.id]||[]).find(e=>e.id===editId);if(!exp)return;
-    if(editEl)editEl.value=editId;if(delBtn)delBtn.style.display='block';if(titleEl)titleEl.textContent='Edit Expense';
-    if(multiWrap)multiWrap.style.display='none';if(editWrap)editWrap.style.display='block';
-    document.getElementById('inp-off-date').value=exp.date||'';
-    document.getElementById('inp-off-cat-edit').value=exp.cat||'Hotel';
-    document.getElementById('inp-off-amount-edit').value=exp.amountOriginal??exp.amount??'';
-    document.getElementById('inp-off-purpose-edit').value=exp.purpose||'';
-    document.getElementById('inp-off-receipt-edit').checked=!!exp.receipt;
-    offSelectedCurrency=exp.currency||trip.currency||'INR';
-    offSelectedPayMethod=exp.payMethod||'💵 Cash';
-    const cardEl=document.getElementById('inp-off-card-name');if(cardEl)cardEl.value=exp.cardName||'';
-  }else{
-    if(editEl)editEl.value='';if(delBtn)delBtn.style.display='none';if(titleEl)titleEl.textContent='Add Official Expense';
-    if(multiWrap)multiWrap.style.display='block';if(editWrap)editWrap.style.display='none';
-    document.getElementById('inp-off-date').value=new Date().toISOString().slice(0,10);
-    const rowsC=document.getElementById('off-multi-rows');if(rowsC)rowsC.innerHTML='';
-    offExpRowCount=0;
-    addOffExpenseRow();
-    offSelectedCurrency=trip.currency||'INR';
-    offSelectedPayMethod='💵 Cash';
-    const cardEl=document.getElementById('inp-off-card-name');if(cardEl)cardEl.value='';
-  }
-  renderOffCurrencyChips();renderOffPayMethodChips();
-  openSheet('sheet-official-exp');
-}
-function editOfficialExp(tripId,expId){if(state.activeTripId)state.activeTripId['official']=tripId;openOfficialExpSheet(expId);}
-function saveOfficialExp(){
-  const trip=getOfficialTrip();if(!trip)return;
-  const editId=document.getElementById('inp-off-edit-id')?.value||'';
-  const date=document.getElementById('inp-off-date')?.value||new Date().toISOString().slice(0,10);
-  const cur=offSelectedCurrency||trip.currency||'INR';
-  const baseCur=trip.currency||'INR';
-  const rates=state.exchangeRates?.[trip.id]||{};
-  const rate=rates[cur+'_to_'+baseCur]||(cur===baseCur?1:1);
-  const payMethod=offSelectedPayMethod;
-  const cardName=payMethod==='💳 Credit Card'?(document.getElementById('inp-off-card-name')?.value.trim()||''):'';
-  if(!state.officialExpenses)state.officialExpenses={};
-  if(!state.officialExpenses[trip.id])state.officialExpenses[trip.id]=[];
-  if(editId){
-    const amtOrig=parseFloat(document.getElementById('inp-off-amount-edit')?.value)||0;
-    if(!amtOrig){showToast('Enter an amount');return;}
-    const exp={id:editId,date,cat:document.getElementById('inp-off-cat-edit')?.value||'Hotel',amount:amtOrig*rate,amountOriginal:amtOrig,currency:cur,payMethod,cardName,purpose:document.getElementById('inp-off-purpose-edit')?.value.trim()||'',receipt:document.getElementById('inp-off-receipt-edit')?.checked||false};
-    const idx=state.officialExpenses[trip.id].findIndex(e=>e.id===editId);
-    if(idx>=0)state.officialExpenses[trip.id][idx]=exp;else state.officialExpenses[trip.id].push(exp);
-    save();closeSheet('sheet-official-exp');renderOfficial();showToast('Updated ✅');
-    return;
-  }
-  const rows=document.querySelectorAll('#off-multi-rows>div');
-  let count=0;
-  rows.forEach(row=>{
-    const cat=row.querySelector('.off-row-cat')?.value||'Hotel';
-    const amtOrig=parseFloat(row.querySelector('.off-row-amount')?.value)||0;
-    const purpose=row.querySelector('.off-row-purpose')?.value.trim()||'';
-    const receipt=row.querySelector('.off-row-receipt')?.checked||false;
-    if(amtOrig>0){
-      state.officialExpenses[trip.id].push({id:uid(),date,cat,amount:amtOrig*rate,amountOriginal:amtOrig,currency:cur,payMethod,cardName,purpose,receipt});
-      count++;
-    }
-  });
-  if(!count){showToast('Add at least one item with an amount');return;}
-  save();closeSheet('sheet-official-exp');renderOfficial();showToast(count+' expense'+(count>1?'s':'')+' saved ✅');
-}
-function deleteOfficialExp(){
-  const trip=getOfficialTrip();if(!trip)return;
-  const editId=document.getElementById('inp-off-edit-id')?.value;if(!editId)return;
-  if(!confirm('Delete this expense?'))return;
-  if(state.officialExpenses?.[trip.id])state.officialExpenses[trip.id]=state.officialExpenses[trip.id].filter(e=>e.id!==editId);
-  save();closeSheet('sheet-official-exp');renderOfficial();showToast('Deleted');
-}
+function editOfficialExp(tripId,expId){ openEditExpense(tripId,expId,'official'); }
 function openImprestSheet(){
   const trip=getOfficialTrip();if(!trip)return;
+  const days=trip.start&&trip.end?Math.max(1,Math.round((new Date(trip.end+'T12:00')-new Date(trip.start+'T12:00'))/864e5)+1):1;
+  const pEl=document.getElementById('imprest-persons'),dEl=document.getElementById('imprest-days');
+  if(pEl)pEl.value=trip.persons||1;
+  if(dEl)dEl.value=days;
   const icont=document.getElementById('imprest-inputs');
   if(icont){
     const imp=trip.imprestByCat||{};
-    icont.innerHTML=OFF_CATS.map(cat=>'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;"><span style="width:110px;font-size:13px;">'+OFF_ICONS[cat]+' '+cat+'</span><input class="form-input" style="flex:1;font-size:13px;padding:7px;" type="number" placeholder="Taken ₹" value="'+(imp[cat]||'')+'" data-cat="'+cat+'"/></div>').join('');
+    const rates=trip.imprestRates||{};
+    icont.innerHTML=OFF_CATS.map(cat=>
+      '<div style="background:var(--surface2);border-radius:10px;padding:10px;margin-bottom:8px;">'+
+      '<div style="font-size:12px;font-weight:600;margin-bottom:6px;">'+OFF_ICONS[cat]+' '+cat+'</div>'+
+      '<div style="display:flex;align-items:center;gap:6px;">'+
+      '<input class="form-input imprest-rate" data-cat="'+cat+'" type="number" placeholder="Rate/day" value="'+(rates[cat]||'')+'" style="flex:1;font-size:12px;padding:8px;" oninput="recalcImprestRow(\''+cat+'\')"/>'+
+      '<span style="font-size:10px;color:var(--muted);white-space:nowrap;">× P × D =</span>'+
+      '<input class="form-input imprest-total" data-cat="'+cat+'" type="number" placeholder="Total" value="'+(imp[cat]||'')+'" style="flex:1;font-size:13px;font-weight:700;padding:8px;"/>'+
+      '</div></div>'
+    ).join('');
   }
   openSheet('sheet-imprest');
 }
+function recalcImprestRow(cat){
+  const persons=parseFloat(document.getElementById('imprest-persons')?.value)||1;
+  const days=parseFloat(document.getElementById('imprest-days')?.value)||1;
+  const rateEl=document.querySelector('.imprest-rate[data-cat="'+cat+'"]');
+  const totalEl=document.querySelector('.imprest-total[data-cat="'+cat+'"]');
+  const rate=parseFloat(rateEl?.value)||0;
+  if(totalEl)totalEl.value=rate?Math.round(rate*persons*days):'';
+}
+function recalcAllImprest(){
+  OFF_CATS.forEach(cat=>{
+    const rateEl=document.querySelector('.imprest-rate[data-cat="'+cat+'"]');
+    if(rateEl&&parseFloat(rateEl.value)>0)recalcImprestRow(cat);
+  });
+}
 function saveImprest(){
   const trip=getOfficialTrip();if(!trip)return;
-  const iinputs=document.querySelectorAll('#imprest-inputs input[data-cat]');
-  trip.imprestByCat={};
-  iinputs.forEach(inp=>{const v=parseFloat(inp.value)||0;if(v>0)trip.imprestByCat[inp.dataset.cat]=v;});
+  trip.persons=parseFloat(document.getElementById('imprest-persons')?.value)||trip.persons||1;
+  const rateEls=document.querySelectorAll('.imprest-rate[data-cat]');
+  const totalEls=document.querySelectorAll('.imprest-total[data-cat]');
+  trip.imprestRates={};trip.imprestByCat={};
+  rateEls.forEach(el=>{const v=parseFloat(el.value)||0;if(v>0)trip.imprestRates[el.dataset.cat]=v;});
+  totalEls.forEach(el=>{const v=parseFloat(el.value)||0;if(v>0)trip.imprestByCat[el.dataset.cat]=v;});
   save();closeSheet('sheet-imprest');renderOfficial();showToast('Saved ✅');
 }
 function exportExpenseSummary(){
