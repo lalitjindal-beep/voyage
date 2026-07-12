@@ -1360,6 +1360,34 @@ function load() {
     console.error('Load failed:', e);
     showToast('⚠️ Saved data could not be read — starting fresh');
   }
+  migrateOfficialCategories();
+}
+function migrateOfficialCategories() {
+  const rename = { 'Pocket': 'Reimbursement', 'Event': 'Incidental', 'Client': 'Incidental' };
+  state.trips.forEach(t => {
+    ['imprestByCat','imprestByCatOriginal'].forEach(field => {
+      if (!t[field]) return;
+      Object.keys(rename).forEach(oldCat => {
+        if (t[field][oldCat] !== undefined) {
+          const newCat = rename[oldCat];
+          t[field][newCat] = (t[field][newCat] || 0) + t[field][oldCat];
+          delete t[field][oldCat];
+        }
+      });
+    });
+    if (t.imprestRates) {
+      Object.keys(rename).forEach(oldCat => {
+        if (t.imprestRates[oldCat] !== undefined) {
+          const newCat = rename[oldCat];
+          if (t.imprestRates[newCat] === undefined) t.imprestRates[newCat] = t.imprestRates[oldCat];
+          delete t.imprestRates[oldCat];
+        }
+      });
+    }
+    (state.officialExpenses?.[t.id] || []).forEach(e => {
+      if (rename[e.cat]) e.cat = rename[e.cat];
+    });
+  });
 }
 function switchTab(tab) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -4144,9 +4172,9 @@ function buildTripDNA(tripId) {
   return '<div style="margin-top:12px;"><div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.5px;margin-bottom:6px;">🧬 TRIP DNA</div><div style="display:flex;align-items:center;gap:10px;">'+svg+legend+'</div></div>';
 }
 
-const OFF_CATS=['Hotel','DA','Flight','Taxi','Event','Incidental','Client','Pocket'];
-const OFF_ICONS={Hotel:'🏨',DA:'💰',Flight:'✈️',Taxi:'🚕',Event:'🎪',Incidental:'📎',Client:'🍽️',Pocket:'👜'};
-const OFF_REIMB={Hotel:true,DA:true,Flight:true,Taxi:true,Event:true,Incidental:true,Client:true,Pocket:false};
+const OFF_CATS=['Hotel','DA','Flight','Taxi','Incidental','Reimbursement'];
+const OFF_ICONS={Hotel:'🏨',DA:'💰',Flight:'✈️',Taxi:'🚕',Incidental:'📎',Reimbursement:'💵'};
+const OFF_REIMB={Hotel:true,DA:true,Flight:true,Taxi:true,Incidental:true,Reimbursement:true};
 let selectedTripType='personal';
 function setTripType(type){
   selectedTripType=type;
@@ -4318,12 +4346,12 @@ function openImprestSheet(){
     const rates=trip.imprestRates||{};
     icont.innerHTML=OFF_CATS.map(cat=>
       '<div style="background:var(--surface2);border-radius:10px;padding:10px;margin-bottom:8px;">'+
-      '<div style="font-size:12px;font-weight:600;margin-bottom:6px;">'+OFF_ICONS[cat]+' '+cat+(cat==='DA'?' <span style="font-weight:400;color:var(--muted);">— allowance received</span>':'')+'</div>'+
+      '<div style="font-size:12px;font-weight:600;margin-bottom:6px;">'+OFF_ICONS[cat]+' '+cat+(cat==='DA'?' <span style="font-weight:400;color:var(--muted);">— allowance received</span>':cat==='Reimbursement'?' <span style="font-weight:400;color:var(--muted);">— daily pocket money</span>':'')+'</div>'+
       '<div style="display:flex;align-items:center;gap:6px;">'+
       '<input class="form-input imprest-rate" data-cat="'+cat+'" type="number" placeholder="Rate/day" value="'+(rates[cat]||'')+'" style="flex:1;font-size:12px;padding:8px;" oninput="recalcImprestRow(\''+cat+'\')"/>'+
       '<span style="font-size:10px;color:var(--muted);white-space:nowrap;">× P × D =</span>'+
       '<input class="form-input imprest-total" data-cat="'+cat+'" type="number" placeholder="Total" value="'+(imp[cat]||'')+'" style="flex:1;font-size:13px;font-weight:700;padding:8px;" oninput="updateImprestGrandTotal()"/>'+
-      '</div>'+(cat==='DA'?'<div style="font-size:10px;color:var(--muted);margin-top:5px;">This is what you were <b>given</b> as DA. The DA <b>spend</b> auto-calc (in Add Trip) is separate.</div>':'')+'</div>'
+      '</div>'+(cat==='DA'?'<div style="font-size:10px;color:var(--muted);margin-top:5px;">This is what you were <b>given</b> as DA. The DA <b>spend</b> auto-calc (in Add Trip) is separate.</div>':cat==='Reimbursement'?'<div style="font-size:10px;color:var(--muted);margin-top:5px;">Typical rate: <b>10 USD/EUR per day</b> for tours up to 10 days, <b>8 USD/EUR per day</b> for longer tours.</div>':'')+'</div>'
     ).join('');
   }
   updateImprestGrandTotal();
@@ -4408,7 +4436,7 @@ function exportExpenseSummary(){
     html+='<tr><td>'+OFF_ICONS[cat]+' '+cat+'</td><td style="text-align:right">'+fmtI(tk)+'</td><td style="text-align:right">'+fmtI(a)+'</td><td style="text-align:right;color:'+(lf<0?'#C62828':'#2E7D32')+'">'+(tk?fmtI(lf):'—')+'</td><td style="text-align:center">'+(OFF_REIMB[cat]?'✅':'❌')+'</td></tr>';
   });
   html+='<tr class="tr"><td><b>TOTAL</b></td><td style="text-align:right"><b>'+fmtI(imprest)+'</b></td><td style="text-align:right"><b>'+fmtI(totalSpent)+'</b></td><td style="text-align:right"><b>'+fmtI(imprest-totalSpent)+'</b></td><td></td></tr></table>';
-  html+='<div class="settle" style="background:'+(net>=0?'#FFEBEE':'#E8F5E9')+';"><b>Total Reimbursable:</b> '+fmtI(totalReimb)+'<br><b>Less Imprest Received:</b> '+fmtI(imprest)+'<br><b style="font-size:13pt;color:'+(net>=0?'#C62828':'#2E7D32')+'">'+(net>=0?'AMOUNT DUE TO EMPLOYEE: '+fmtI(net):'REFUND TO COMPANY: '+fmtI(Math.abs(net)))+'</b></div>';
+  html+='<div class="settle" style="background:'+(net>=0?'#E8F5E9':'#FFEBEE')+';"><b>TOTAL SPENT:</b> '+fmtI(totalReimb)+'<br><b>Less Imprest Received:</b> '+fmtI(imprest)+'<br><b style="font-size:13pt;color:'+(net>=0?'#2E7D32':'#C62828')+'">BALANCE: '+(net<0?'-':'')+fmtI(Math.abs(net))+'</b></div>';
   html+='<br><b style="color:'+H+'">EXPENSE DETAILS</b><br><br>';
   html+='<table><tr><th>Date</th><th>Category</th><th>Description / Purpose</th><th style="text-align:right">Amount</th><th>Receipt</th></tr>';
   [...expenses].sort((a,b)=>a.date.localeCompare(b.date)).forEach(e=>{const rTag=e.receiptStatus==='attached'?'🧾 Attached':e.receiptStatus==='custom'?'📍 '+(e.receiptLocation||'Kept elsewhere'):(e.receipt&&!e.receiptStatus?'🧾 Attached':'❌ None');html+='<tr><td>'+fmt(e.date)+'</td><td>'+OFF_ICONS[e.cat]+' '+e.cat+'</td><td>'+e.purpose+'</td><td style="text-align:right">'+fmtI(e.amount)+'</td><td style="text-align:center;font-size:9pt;">'+rTag+'</td></tr>';});
