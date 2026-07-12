@@ -96,16 +96,16 @@
   .header-btn { width: 40px; height: 40px; border-radius: 12px; background: var(--sky); border: none; color: white; font-size: 20px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: transform 0.1s; }
   .header-btn:active { transform: scale(0.93); }
   /* TRIP CARDS */
-  .trip-card { border-radius: 20px; overflow: hidden; margin-bottom: 16px; position: relative; height: 200px; cursor: pointer; transition: transform 0.2s; box-shadow: var(--shadow); }
+  .trip-card { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 16px; margin-bottom: 8px; position: relative; cursor: pointer; transition: transform 0.15s; box-shadow: var(--shadow); background: var(--surface); border: 1px solid var(--border); }
   .trip-card:active { transform: scale(0.98); }
-  .trip-card-selected { box-shadow: 0 0 0 3px var(--sky), 0 8px 32px rgba(74,144,217,0.35); }
-  .trip-card-bg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 80px; }
-  .trip-card-overlay { position: absolute; inset: 0; background: linear-gradient(to top, rgba(10,20,40,0.75) 0%, rgba(10,20,40,0.1) 60%); }
-  .trip-card-content { position: absolute; bottom: 0; left: 0; right: 0; padding: 20px; color: white; }
-  .trip-card-dest { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; }
-  .trip-card-dates { font-size: 13px; opacity: 0.85; margin-top: 3px; }
-  .trip-card-badge { position: absolute; top: 14px; right: 14px; background: rgba(255,255,255,0.22); backdrop-filter: blur(8px); border-radius: 10px; padding: 4px 10px; font-size: 12px; font-weight: 600; color: white; }
-  .trip-card-badge.active { background: var(--green); }
+  .trip-card-selected { box-shadow: 0 0 0 3px var(--sky), 0 4px 16px rgba(74,144,217,0.3); }
+  .trip-card-bg { width: 52px; height: 52px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 26px; flex-shrink: 0; }
+  .trip-card-overlay { display: none; }
+  .trip-card-content { flex: 1; min-width: 0; }
+  .trip-card-dest { font-size: 15px; font-weight: 700; letter-spacing: -0.2px; color: var(--slate); display: flex; align-items: center; gap: 6px; }
+  .trip-card-dates { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .trip-card-badge { flex-shrink: 0; background: var(--surface2); border-radius: 8px; padding: 3px 9px; font-size: 11px; font-weight: 600; color: var(--mid); }
+  .trip-card-badge.active { background: var(--green); color: white; }
   /* EMPTY STATE */
   .empty-state { text-align: center; padding: 60px 20px; color: var(--muted); }
   .empty-state .emoji { font-size: 52px; margin-bottom: 16px; }
@@ -1487,18 +1487,16 @@ function renderTrips() {
     const isSelected = t.id === selectedId;
     const dates = (t.start && t.end) ? `${fmt(t.start)} → ${fmt(t.end)}` : 'Dates not set';
     return `
-      ${isSelected ? '<div style="font-size:11px;font-weight:700;color:var(--sky);letter-spacing:0.5px;text-transform:uppercase;margin-bottom:4px;padding-left:4px;">✓ Currently Selected</div>' : ''}
       <div class="trip-card${isSelected ? ' trip-card-selected' : ''}" onclick="quickSelectTrip('${t.id}')">
         <div class="trip-card-bg" style="background:${t.color}">${t.emoji}</div>
-        <div class="trip-card-overlay"></div>
         <div class="trip-card-content">
-          <div class="trip-card-dest">${t.dest}</div>
+          <div class="trip-card-dest">${t.dest}${isSelected ? ' <span style="color:var(--sky);font-size:12px;">✓</span>' : ''}${t.tripType==='official' ? ' <span style="font-size:9px;background:#E3F2FD;color:#1565C0;border-radius:5px;padding:2px 6px;font-weight:700;">💼 OFFICIAL</span>' : ''}</div>
           <div class="trip-card-dates">${dates}</div>
         </div>
         ${badge}
         <button onclick="event.stopPropagation();openDeleteTrip('${t.id}')"
-          style="position:absolute;top:12px;left:12px;background:rgba(0,0,0,0.45);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.2);color:white;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px;">
-          🗑 Delete
+          style="flex-shrink:0;background:var(--red-light);color:var(--red);border:none;border-radius:9px;padding:7px 9px;font-size:14px;cursor:pointer;">
+          🗑
         </button>
       </div>`;
   }).join('');
@@ -4080,7 +4078,8 @@ function selectCur(elOrId, code) {
   if (hidden) hidden.value = c2;
   if (inp) inp.value = c2+' – '+(CUR_NAMES[c2]||c2);
   hideCurDropdown(id);
-  if (id === 'new-cur-select' && typeof renderExpCurrencyChips === 'function') renderExpCurrencyChips();
+  if (id === 'new-cur-select' && typeof renderExpCurrencyChips === 'function') { renderExpCurrencyChips(); updateNewCurRateLabel(); }
+  if (id === 'off-new-cur-select') updateOffNewCurRateLabel();
 }
 function initCurWidget(id, defaultCode) {
   const hidden = document.getElementById(id);
