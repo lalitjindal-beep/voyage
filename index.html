@@ -439,7 +439,6 @@
 <div class="page-header">
 <div><div class="page-title">Budget 💰</div></div>
 <div style="display:flex;gap:8px;">
-<button class="header-btn" onclick="openConverterSheet()" title="Currency Converter" style="font-size:16px;">💱</button>
 <button class="header-btn" style="background:var(--red-light);color:var(--red);font-size:18px;" title="Deleted expenses" onclick="openSheet('sheet-expense-trash')">🗑</button>
 <button class="header-btn" style="background:#1D6F42;color:white;font-size:13px;font-weight:700;" title="Export to Excel" onclick="exportBudgetExcel()">XLS</button>
 <button class="header-btn" style="background:var(--green-light);color:var(--green);font-size:13px;font-weight:700;" title="Money Received / Cash" onclick="openSheet('sheet-money-in')">💵</button>
@@ -556,6 +555,10 @@
   <div id="official-trip-selector" class="trip-selector" onclick="openSheet('sheet-select-trip','official')" style="margin-bottom:14px;">
     <div><div class="trip-selector-label">Official Tour</div><div class="trip-selector-name" id="sel-trip-official">Select a tour</div></div>
     <span style="color:var(--sky);">▼</span>
+  </div>
+  <div id="official-search-wrap" style="position:relative;margin-bottom:12px;display:none;">
+    <span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);font-size:16px;pointer-events:none;">🔍</span>
+    <input class="form-input" id="off-exp-search" placeholder="Search expenses…" style="padding-left:40px;" oninput="offExpPageSize=25;debounceRenderOfficial()" />
   </div>
   <div id="official-content"></div>
   <button class="fab" id="fab-official-add" onclick="openOfficialAddExpense()" style="display:none;" title="Add Official Expense">+</button>
@@ -826,6 +829,12 @@
 <div id="edit-card-name-row" style="display:none;margin-top:-8px;margin-bottom:12px;">
 <input class="form-input" id="edit-exp-card-name" placeholder="Card name e.g. Axis Magnus"/>
 </div>
+<div id="edit-exp-receipt-section" style="display:none;margin-bottom:14px;">
+<label class="form-label">Receipt</label>
+<div id="edit-exp-receipt-chips" style="display:flex;gap:6px;margin-top:4px;"></div>
+<input type="hidden" id="edit-exp-receipt-status" value="none"/>
+<input class="form-input" id="edit-exp-receipt-location" placeholder="Where is it kept? e.g. physical file, folder name" style="display:none;font-size:13px;margin-top:8px;"/>
+</div>
 <button class="btn-primary" onclick="saveEditExpense()">Save Changes</button>
 <button class="btn-danger" onclick="deleteFromEditExpense()">Delete Expense</button>
 </div>
@@ -880,6 +889,24 @@
 <div style="font-size:11px;color:var(--muted);margin-top:4px;">Leave blank to use full budget for a category</div>
 </div>
 <button class="btn-primary" onclick="saveEditBudget()">Save Budget</button>
+</div>
+</div>
+<!-- Official Trip Currencies Sheet -->
+<div class="overlay" id="overlay-sheet-official-currencies" onclick="closeSheet('sheet-official-currencies')"></div>
+<div class="sheet" id="sheet-official-currencies">
+<div class="sheet-handle"></div>
+<div class="sheet-title">💱 Trip Currencies</div>
+<div class="sheet-body">
+<div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Add every currency you'll spend in on this official tour. Each becomes a quick-tap button when logging expenses or imprest.</div>
+<div id="official-currencies-list" style="margin-bottom:12px;"></div>
+<div style="display:flex;gap:8px;align-items:center;">
+<div class="cur-search-wrap" style="position:relative;flex:1;"><input class="form-input" id="off-new-cur-select-inp" placeholder="Search currency or country..." autocomplete="off" style="font-size:13px;" oninput="filterCurDropdown('off-new-cur-select')" onfocus="showCurDropdown('off-new-cur-select')" onblur="setTimeout(()=>hideCurDropdown('off-new-cur-select'),200)"/><input type="hidden" id="off-new-cur-select" value="INR"/><div id="off-new-cur-select-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:white;border:1.5px solid var(--sky);border-radius:10px;max-height:200px;overflow-y:auto;z-index:999;box-shadow:0 4px 20px rgba(0,0,0,.15);"></div></div>
+</div>
+<div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+<div style="font-size:13px;font-weight:600;color:var(--slate);white-space:nowrap;" id="off-new-cur-rate-label">1 ? =</div>
+<input class="form-input" id="off-new-cur-rate" type="number" placeholder="rate" step="0.0001" style="flex:1;" />
+<button onclick="addOfficialTripCurrency()" style="padding:0 16px;background:var(--sky);color:white;border:none;border-radius:12px;font-size:20px;cursor:pointer;flex-shrink:0;height:46px;">+</button>
+</div>
 </div>
 </div>
 <!-- Add Travel (Flight/Hotel) Sheet -->
@@ -1220,32 +1247,6 @@
 <button class="btn-primary" onclick="saveApiKey()">Save Key</button>
 <button id="btn-clear-api-key" onclick="clearApiKey()" style="display:none;width:100%;padding:13px;background:var(--red-light);color:var(--red);border:none;border-radius:14px;font-size:15px;font-weight:600;cursor:pointer;margin-top:8px;font-family:inherit;">Remove Key</button>
 <div style="margin-top:12px;padding:10px;background:var(--surface2);border-radius:10px;font-size:11px;color:var(--muted);text-align:center;line-height:1.5;">Without a key, tap Scan → uses offline OCR automatically.<br>Key stored only on your device.</div>
-</div>
-</div>
-<!-- Currency Converter Sheet -->
-<div class="overlay" id="overlay-sheet-converter" onclick="closeSheet('sheet-converter')"></div>
-<div class="sheet" id="sheet-converter">
-<div class="sheet-handle"></div>
-<div class="sheet-title">💱 Currency Converter</div>
-<div class="sheet-body">
-<div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;">
-<div style="flex:1;">
-<label class="form-label">Amount</label>
-<input class="form-input" id="conv-amount" type="number" placeholder="1000" oninput="doConvert()" style="font-size:18px;font-weight:700;"/>
-</div>
-<div style="flex:1;">
-<label class="form-label">From</label>
-<select class="form-input" id="conv-from" onchange="doConvert()" style="font-size:14px;"></select>
-</div>
-<div style="padding-top:20px;font-size:20px;cursor:pointer;" onclick="swapConvert()">⇄</div>
-<div style="flex:1;">
-<label class="form-label">To</label>
-<select class="form-input" id="conv-to" onchange="doConvert()" style="font-size:14px;"></select>
-</div>
-</div>
-<div id="conv-result" style="text-align:center;font-size:28px;font-weight:800;color:var(--sky-dark);padding:16px;background:var(--sky-light);border-radius:14px;min-height:60px;"></div>
-<div id="conv-rate" style="text-align:center;font-size:12px;color:var(--muted);margin-top:8px;"></div>
-<div style="margin-top:14px;font-size:11px;color:var(--muted);text-align:center;">Uses exchange rates saved in Budget → Edit Rates</div>
 </div>
 </div>
 <!-- Official Profile Sheet -->
@@ -2052,26 +2053,10 @@ function renderExpCurrencyChips() {
     const isBase = c === baseCur;
     const active = c === selectedExpCurrency;
     return `<div class="chip${active?' active':''}" onclick="selectExpCurrency('${c}')" style="${active?'':''}">${CURRENCY_SYMBOLS[c]||c} ${c}${isBase?' (base)':''}</div>`;
-  }).join('') + `<div class="chip" onclick="${expenseCtx==='official'?'addQuickTripCurrency()':"openSheet('sheet-edit-budget')"}" style="border-style:dashed;color:var(--sky);">+ Add currency</div>`;
+  }).join('') + `<div class="chip" onclick="${expenseCtx==='official'?'openOfficialCurrenciesSheet()':"openSheet('sheet-edit-budget')"}" style="border-style:dashed;color:var(--sky);">+ Add currency</div>`;
   updateExpConversion();
 }
-function addQuickTripCurrency(){
-  const trip=expCtxTrip();if(!trip)return;
-  const baseCur=trip.currency||'INR';
-  const cur=(prompt('Currency to add (e.g. USD, THB, EUR):')||'').trim().toUpperCase();
-  if(!cur)return;
-  if(cur===baseCur){showToast("That's already the trip's base currency");return;}
-  const rateStr=prompt('Exchange rate: 1 '+cur+' = ? '+baseCur, '1');
-  const rate=parseFloat(rateStr);
-  if(!rateStr||!rate||rate<=0){showToast('Enter a valid rate');return;}
-  if(!state.exchangeRates)state.exchangeRates={};
-  if(!state.exchangeRates[trip.id])state.exchangeRates[trip.id]={};
-  state.exchangeRates[trip.id][cur+'_to_'+baseCur]=rate;
-  save();
-  selectedExpCurrency=cur;
-  renderExpCurrencyChips();
-  showToast(cur+' added ✅');
-}
+
 function selectExpCurrency(c) {
   selectedExpCurrency = c;
   renderExpCurrencyChips();
@@ -2118,13 +2103,32 @@ function addExpenseRow(name='', amount='') {
   const container = document.getElementById('multi-expense-rows');
   const div = document.createElement('div');
   div.id = id;
-  div.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:8px;';
+  div.style.cssText = 'margin-bottom:10px;';
+  const receiptHtml = expenseCtx==='official' ? `
+    <div style="display:flex;gap:6px;margin-top:6px;">
+      <div class="chip receipt-chip active" data-val="none" onclick="setRowReceiptStatus('${id}','none',this)" style="font-size:10px;padding:5px 9px;">❌ No receipt</div>
+      <div class="chip receipt-chip" data-val="attached" onclick="setRowReceiptStatus('${id}','attached',this)" style="font-size:10px;padding:5px 9px;">🧾 Attached</div>
+      <div class="chip receipt-chip" data-val="custom" onclick="setRowReceiptStatus('${id}','custom',this)" style="font-size:10px;padding:5px 9px;">📍 Kept elsewhere</div>
+    </div>
+    <input class="form-input row-receipt-location" placeholder="Where is it kept? e.g. physical file, folder name" style="display:none;font-size:12px;margin-top:6px;" />` : '';
   div.innerHTML = `
-    <input class="form-input" placeholder="Description" value="${name}" style="flex:2;font-size:13px;" oninput="updateMultiTotal();checkDuplicateExpense(this.value)" />
-    <input class="form-input" type="number" placeholder="Amount" value="${amount}" step="0.01" style="flex:1;font-size:13px;" oninput="updateMultiTotal()" />
-    <button onclick="document.getElementById('${id}').remove();updateMultiTotal();" style="width:32px;height:44px;background:var(--red-light);color:var(--red);border:none;border-radius:10px;font-size:16px;cursor:pointer;flex-shrink:0;">×</button>`;
+    <div style="display:flex;gap:8px;align-items:center;">
+      <input class="form-input" placeholder="Description" value="${name}" style="flex:2;font-size:13px;" oninput="updateMultiTotal();checkDuplicateExpense(this.value)" />
+      <input class="form-input" type="number" placeholder="Amount" value="${amount}" step="0.01" style="flex:1;font-size:13px;" oninput="updateMultiTotal()" />
+      <button onclick="document.getElementById('${id}').remove();updateMultiTotal();" style="width:32px;height:44px;background:var(--red-light);color:var(--red);border:none;border-radius:10px;font-size:16px;cursor:pointer;flex-shrink:0;">×</button>
+    </div>${receiptHtml}`;
+  div.dataset.receiptStatus = 'none';
   container.appendChild(div);
   updateMultiTotal();
+}
+function setRowReceiptStatus(rowId, val, el) {
+  const row = document.getElementById(rowId);
+  if (!row) return;
+  row.querySelectorAll('.receipt-chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  row.dataset.receiptStatus = val;
+  const locInput = row.querySelector('.row-receipt-location');
+  if (locInput) locInput.style.display = val === 'custom' ? 'block' : 'none';
 }
 function updatePersonSplit() {
   const trip = getActiveTrip('bg'); if(!trip) return;
@@ -2237,7 +2241,9 @@ function saveMultiExpense() {
     const amount = parseFloat(inputs[1]?.value);
     if (name && amount) {
       if (expenseCtx === 'official') {
-        state.officialExpenses[trip.id].push({ id: uid(), purpose: name, amount: amount*rate, amountOriginal: amount, cat, date, currency: expCur, payMethod, cardName, receipt: false });
+        const receiptStatus = row.dataset.receiptStatus || 'none';
+        const receiptLocation = receiptStatus === 'custom' ? (row.querySelector('.row-receipt-location')?.value.trim() || '') : '';
+        state.officialExpenses[trip.id].push({ id: uid(), purpose: name, amount: amount*rate, amountOriginal: amount, cat, date, currency: expCur, payMethod, cardName, receipt: receiptStatus !== 'none', receiptStatus, receiptLocation });
       } else {
         state.expenses[trip.id].push({ id: uid(), name, amount, amountBase: amount*rate, cat, date, currency: expCur, payMethod, cardName });
       }
@@ -2470,7 +2476,71 @@ function updateNewCurRateLabel() {
 }
 document.addEventListener('change', e => {
   if (e.target.id === 'new-cur-select' || e.target.id === 'edit-budget-currency') updateNewCurRateLabel();
+  if (e.target.id === 'off-new-cur-select') updateOffNewCurRateLabel();
 });
+function updateOffNewCurRateLabel() {
+  const sel = document.getElementById('off-new-cur-select');
+  const label = document.getElementById('off-new-cur-rate-label');
+  if (sel && label) label.textContent = `1 ${sel.value} = `;
+}
+function openOfficialCurrenciesSheet(){
+  const trip=getOfficialTrip();if(!trip)return;
+  renderOfficialCurrenciesList();
+  const inp=document.getElementById('off-new-cur-select-inp'),hid=document.getElementById('off-new-cur-select');
+  if(inp)inp.value='';
+  if(hid)hid.value='';
+  const rateInp=document.getElementById('off-new-cur-rate');if(rateInp)rateInp.value='';
+  openSheet('sheet-official-currencies');
+}
+function renderOfficialCurrenciesList(){
+  const trip=getOfficialTrip(),container=document.getElementById('official-currencies-list');
+  if(!trip||!container)return;
+  const baseCur=trip.currency||'INR';
+  const rates=state.exchangeRates?.[trip.id]||{};
+  const extraCurs=Object.keys(rates).filter(k=>k.endsWith('_to_'+baseCur));
+  let html=`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:white;border-radius:8px;margin-bottom:6px;border:1px solid var(--border);">
+    <span style="font-size:13px;font-weight:700;">${CURRENCY_SYMBOLS[baseCur]||''} ${baseCur}</span>
+    <span style="font-size:11px;color:var(--muted);font-weight:600;">BASE — no conversion</span>
+  </div>`;
+  if(!extraCurs.length){
+    html+=`<div style="font-size:12px;color:var(--muted);padding:4px 0 8px;">No other currencies added yet</div>`;
+  }else{
+    extraCurs.forEach(key=>{
+      const cur=key.replace('_to_'+baseCur,'');
+      const rate=rates[key];
+      html+=`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:white;border-radius:8px;margin-bottom:6px;border:1px solid var(--border);">
+        <span style="font-size:13px;font-weight:700;">${CURRENCY_SYMBOLS[cur]||''} ${cur}</span>
+        <span style="font-size:12px;color:var(--sky-dark);font-weight:600;">1 ${cur} = ${rate} ${baseCur}</span>
+        <span onclick="removeOfficialTripCurrency('${cur}')" style="color:var(--red);font-size:16px;cursor:pointer;padding:2px 6px;">×</span>
+      </div>`;
+    });
+  }
+  container.innerHTML=html;
+}
+function addOfficialTripCurrency(){
+  const trip=getOfficialTrip();
+  if(!trip){showToast('Select a trip first');return;}
+  const cur=getCurVal('off-new-cur-select');
+  const rate=parseFloat(document.getElementById('off-new-cur-rate').value);
+  const baseCur=trip.currency||'INR';
+  if(cur===baseCur){showToast("That's already your base currency");return;}
+  if(!cur||!rate||rate<=0){showToast('Enter a valid currency and rate');return;}
+  if(!state.exchangeRates)state.exchangeRates={};
+  if(!state.exchangeRates[trip.id])state.exchangeRates[trip.id]={};
+  state.exchangeRates[trip.id][cur+'_to_'+baseCur]=rate;
+  save();
+  renderOfficialCurrenciesList();
+  renderExpCurrencyChips();
+  renderImprestCurrencyChips();
+  document.getElementById('off-new-cur-rate').value='';
+  showToast(`${cur} added to trip ✅`);
+}
+function removeOfficialTripCurrency(cur){
+  const trip=getOfficialTrip();if(!trip)return;
+  const baseCur=trip.currency||'INR';
+  if(state.exchangeRates?.[trip.id])delete state.exchangeRates[trip.id][cur+'_to_'+baseCur];
+  save();renderOfficialCurrenciesList();renderExpCurrencyChips();renderImprestCurrencyChips();
+}
 function addTripCurrency() {
   const trip = getActiveTrip('bg');
   if (!trip) { showToast('Select a trip first'); return; }
@@ -2553,48 +2623,6 @@ function resetExpenseForm() {
 }
 const API_KEY_STORAGE = 'voyage_openrouter_key';
 function getApiKey() { try { return localStorage.getItem(API_KEY_STORAGE)||''; } catch(e) { return ''; } }
-function openConverterSheet() {
-  const trip = getActiveTrip('bg');
-  const cur = trip?.currency || 'INR';
-  const opts = ALL_CURRENCIES.map(c2 => `<option value="${c2}">${c2}</option>`).join('');
-  const fromEl = document.getElementById('conv-from');
-  const toEl = document.getElementById('conv-to');
-  if (fromEl) { fromEl.innerHTML = opts; fromEl.value = cur; }
-  if (toEl) { toEl.innerHTML = opts; toEl.value = cur === 'INR' ? 'THB' : 'INR'; }
-  const amtEl = document.getElementById('conv-amount');
-  if (amtEl) amtEl.value = '1000';
-  openSheet('sheet-converter');
-  doConvert();
-}
-function swapConvert() {
-  const f = document.getElementById('conv-from');
-  const t = document.getElementById('conv-to');
-  if (!f || !t) return;
-  const tmp = f.value; f.value = t.value; t.value = tmp;
-  doConvert();
-}
-function doConvert() {
-  const trip = getActiveTrip('bg');
-  const amt = parseFloat(document.getElementById('conv-amount')?.value) || 0;
-  const from = document.getElementById('conv-from')?.value;
-  const to = document.getElementById('conv-to')?.value;
-  const resEl = document.getElementById('conv-result');
-  const rateEl = document.getElementById('conv-rate');
-  if (!resEl || !from || !to) return;
-  if (from === to) { resEl.textContent = fmtCurrency(amt, to); if (rateEl) rateEl.textContent = '1 ' + from + ' = 1 ' + to; return; }
-  const rates = state.exchangeRates?.[trip?.id] || {};
-  const rateKey = from + '_to_' + to;
-  const rateKeyInv = to + '_to_' + from;
-  let rate = rates[rateKey] || (rates[rateKeyInv] ? 1/rates[rateKeyInv] : null);
-  if (rate) {
-    const result = amt * rate;
-    resEl.textContent = fmtCurrency(result, to);
-    if (rateEl) rateEl.textContent = '1 ' + from + ' = ' + rate.toFixed(4) + ' ' + to;
-  } else {
-    resEl.textContent = '—';
-    if (rateEl) rateEl.textContent = 'No rate saved. Add in Budget → Edit Rates';
-  }
-}
 function updateApiKeyIndicator(){const el=document.getElementById('api-key-indicator');if(!el)return;const key=getApiKey();if(key){el.innerHTML='🟢 AI scan ready (OpenRouter)';el.style.color='var(--green)';}else{el.innerHTML='🔵 Tap 🔑 for AI scan · offline OCR available';el.style.color='var(--sky-dark)';}}
 function startBillScan() {
   document.getElementById('bill-camera-input').click();
@@ -2777,6 +2805,25 @@ function openEditExpense(tripId, expId, ctx) {
   if (cnEl) cnEl.value = exp.cardName || '';
   const cnRow = document.getElementById('edit-card-name-row');
   if (cnRow) cnRow.style.display = (exp.payMethod === '💳 Credit Card') ? 'block' : 'none';
+  const receiptSection = document.getElementById('edit-exp-receipt-section');
+  if (receiptSection) {
+    receiptSection.style.display = expenseCtx === 'official' ? 'block' : 'none';
+    if (expenseCtx === 'official') renderEditReceiptChips(exp.receiptStatus || (exp.receipt ? 'attached' : 'none'), exp.receiptLocation || '');
+  }
+}
+function renderEditReceiptChips(status, location) {
+  const el = document.getElementById('edit-exp-receipt-chips');
+  if (!el) return;
+  const opts = [['none','❌ No receipt'],['attached','🧾 Attached'],['custom','📍 Kept elsewhere']];
+  el.innerHTML = opts.map(([val,label]) => `<div class="chip${val===status?' active':''}" onclick="selectEditReceiptStatus('${val}')" style="font-size:11px;padding:6px 10px;">${label}</div>`).join('');
+  const statusEl = document.getElementById('edit-exp-receipt-status');
+  if (statusEl) statusEl.value = status;
+  const locInput = document.getElementById('edit-exp-receipt-location');
+  if (locInput) { locInput.style.display = status === 'custom' ? 'block' : 'none'; locInput.value = location || ''; }
+}
+function selectEditReceiptStatus(val) {
+  const locInput = document.getElementById('edit-exp-receipt-location');
+  renderEditReceiptChips(val, locInput ? locInput.value : '');
 }
 function renderEditExpCurrencyChips(tripId, selectedCur) {
   const container = document.getElementById('edit-exp-currency-chips');
@@ -2813,6 +2860,10 @@ function saveEditExpense() {
       exp.cat = document.getElementById('edit-exp-cat').value;
       exp.date = document.getElementById('edit-exp-date').value;
       exp.currency = expCur; exp.payMethod = pm; exp.cardName = cardName;
+      const receiptStatus = document.getElementById('edit-exp-receipt-status')?.value || 'none';
+      exp.receiptStatus = receiptStatus;
+      exp.receipt = receiptStatus !== 'none';
+      exp.receiptLocation = receiptStatus === 'custom' ? (document.getElementById('edit-exp-receipt-location')?.value.trim()||'') : '';
     }
     save(); renderOfficial();
   } else {
@@ -4099,6 +4150,8 @@ function getOfficialTrip(){
 let offExpFilter='All';
 let offExpPageSize=25;
 let offBreakdownExpanded=true;
+let _officialSearchTimer;
+function debounceRenderOfficial(){clearTimeout(_officialSearchTimer);_officialSearchTimer=setTimeout(renderOfficial,220);}
 function toggleOffBreakdown(){offBreakdownExpanded=!offBreakdownExpanded;renderOfficial();}
 function setOffExpFilter(cat){offExpFilter=cat;offExpPageSize=25;renderOfficial();}
 function renderOfficial(){
@@ -4106,15 +4159,19 @@ function renderOfficial(){
   if(!selEl||!container)return;
   const trip=getOfficialTrip();
   const fab=document.getElementById('fab-official-add');
+  const searchWrap=document.getElementById('official-search-wrap');
   selEl.textContent=trip?trip.dest:'Select an official tour';
   if(!trip){
     const hasOfficials=state.trips.some(t=>t.tripType==='official');
     container.innerHTML=hasOfficials?
       '<div class="empty-state"><div class="emoji">💼</div><p>You have multiple official tours.<br>Tap above to <b>select one</b> before adding expenses.</p></div>':
       '<div class="empty-state"><div class="emoji">💼</div><p>No official tours yet.<br>Create a trip → select <b>Official Tour</b>.</p></div>';
-    if(fab)fab.style.display='none';return;
+    if(fab)fab.style.display='none';
+    if(searchWrap)searchWrap.style.display='none';
+    return;
   }
   if(fab)fab.style.display='flex';
+  if(searchWrap)searchWrap.style.display='block';
   const expenses=state.officialExpenses?.[trip.id]||[];
   const imprestByCat=trip.imprestByCat||{};
   const imprest=OFF_CATS.reduce((s,k)=>s+(imprestByCat[k]||0),0);
@@ -4186,10 +4243,24 @@ function renderOfficial(){
   });
   html+='</div>';
   const filtered=offExpFilter==='All'?expenses:expenses.filter(e=>e.cat===offExpFilter);
-  const sorted=[...filtered].sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
+  const q=(document.getElementById('off-exp-search')?.value||'').trim().toLowerCase();
+  const searched=q?filtered.filter(e=>(e.purpose||'').toLowerCase().includes(q)):filtered;
+  function offHl(text){
+    if(!q)return text;
+    const re=new RegExp('('+q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','gi');
+    return (text||'').replace(re,'<mark style="background:#FFF176;border-radius:3px;padding:0 2px;">$1</mark>');
+  }
+  const sorted=[...searched].sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
   const visible=sorted.slice(0,offExpPageSize);
-  html+=visible.map(e=>'<div class="card" style="display:flex;gap:10px;align-items:center;padding:10px 12px;margin-bottom:8px;"><span style="font-size:20px;">'+OFF_ICONS[e.cat]+'</span><div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:600;">'+e.purpose+'</div><div style="font-size:11px;color:var(--muted);">'+fmt(e.date)+' · '+e.cat+(e.receipt?' · 🧾':'')+(e.payMethod?' · '+e.payMethod:'')+'</div></div><div style="text-align:right;"><div style="font-size:14px;font-weight:700;">'+fmtI(e.amount)+'</div><span onclick="editOfficialExp(\''+trip.id+'\',\''+e.id+'\')" style="font-size:16px;cursor:pointer;color:var(--sky);">✏️</span></div></div>').join('');
-  if(!sorted.length)html+='<div style="font-size:12px;color:var(--muted);padding:12px 0;text-align:center;">No expenses'+(offExpFilter!=='All'?' in this category':'')+' yet</div>';
+  html+=visible.map(e=>{
+    const eCur=e.currency||trip.currency||'INR';
+    const isForeign=eCur!==(trip.currency||'INR');
+    const origLine=isForeign?'<div style="font-size:10px;color:var(--muted);">'+fmtCurrency(e.amountOriginal??e.amount,eCur)+'</div>':'';
+    const curBadge=isForeign?' <span style="font-size:9px;background:var(--sky-light);color:var(--sky-dark);border-radius:4px;padding:1px 5px;font-weight:700;">'+eCur+'</span>':'';
+    const receiptTag=e.receiptStatus==='attached'?' · 🧾':(e.receiptStatus==='custom'?' · 📍'+(e.receiptLocation?' '+e.receiptLocation:''):(e.receipt&&!e.receiptStatus?' · 🧾':''));
+    return '<div class="card" style="display:flex;gap:10px;align-items:center;padding:10px 12px;margin-bottom:8px;"><span style="font-size:20px;">'+OFF_ICONS[e.cat]+'</span><div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:600;">'+offHl(e.purpose)+curBadge+'</div><div style="font-size:11px;color:var(--muted);">'+fmt(e.date)+' · '+e.cat+receiptTag+(e.payMethod?' · '+e.payMethod:'')+'</div></div><div style="text-align:right;"><div style="font-size:14px;font-weight:700;">'+fmtI(e.amount)+'</div>'+origLine+'<span onclick="editOfficialExp(\''+trip.id+'\',\''+e.id+'\')" style="font-size:16px;cursor:pointer;color:var(--sky);">✏️</span></div></div>';
+  }).join('');
+  if(!sorted.length)html+='<div style="font-size:12px;color:var(--muted);padding:12px 0;text-align:center;">'+(q?'No expenses match "<b>'+q+'</b>"':'No expenses'+(offExpFilter!=='All'?' in this category':'')+' yet')+'</div>';
   if(sorted.length>visible.length)html+='<button onclick="offExpPageSize+=25;renderOfficial();" style="width:100%;padding:11px;border:1.5px dashed var(--border);border-radius:12px;background:none;color:var(--sky);font-size:13px;font-weight:600;cursor:pointer;margin-bottom:8px;font-family:inherit;">Show '+Math.min(25,sorted.length-visible.length)+' more ('+(sorted.length-visible.length)+' left)</button>';
   if(daAuto)html+='<div class="card" style="padding:10px 12px;margin-bottom:8px;background:var(--sky-light);"><span style="font-size:13px;font-weight:600;">💰 DA (auto) — '+days+' days × '+(CURRENCY_SYMBOLS[trip.currency]||'₹')+trip.daRate+'</span><div style="font-size:11px;color:var(--muted);">Calculated automatically</div><div style="font-size:14px;font-weight:700;text-align:right;">'+fmtI(daAuto)+'</div></div>';
   html+='<button onclick="exportExpenseSummary()" style="width:100%;margin-top:8px;padding:13px;background:#E8F5E9;color:#2E7D32;border:1.5px solid #4CAF50;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">📊 Generate Summary</button>';
@@ -4242,7 +4313,7 @@ function renderImprestCurrencyChips(){
   const baseCur=trip.currency||'INR';
   const currencies=getTripCurrencies(trip.id);
   if(!imprestSelectedCurrency||!currencies.includes(imprestSelectedCurrency))imprestSelectedCurrency=baseCur;
-  container.innerHTML=currencies.map(c=>'<div class="chip'+(c===imprestSelectedCurrency?' active':'')+'" onclick="selectImprestCurrency(\''+c+'\')">'+(CURRENCY_SYMBOLS[c]||c)+' '+c+(c===baseCur?' (base)':'')+'</div>').join('');
+  container.innerHTML=currencies.map(c=>'<div class="chip'+(c===imprestSelectedCurrency?' active':'')+'" onclick="selectImprestCurrency(\''+c+'\')">'+(CURRENCY_SYMBOLS[c]||c)+' '+c+(c===baseCur?' (base)':'')+'</div>').join('')+'<div class="chip" onclick="openOfficialCurrenciesSheet()" style="border-style:dashed;color:var(--sky);">+ Add currency</div>';
 }
 function selectImprestCurrency(c){imprestSelectedCurrency=c;renderImprestCurrencyChips();updateImprestGrandTotal();}
 function recalcImprestRow(cat){
@@ -4318,7 +4389,7 @@ function exportExpenseSummary(){
   html+='<div class="settle" style="background:'+(net>=0?'#FFEBEE':'#E8F5E9')+';"><b>Total Reimbursable:</b> '+fmtI(totalReimb)+'<br><b>Less Imprest Received:</b> '+fmtI(imprest)+'<br><b style="font-size:13pt;color:'+(net>=0?'#C62828':'#2E7D32')+'">'+(net>=0?'AMOUNT DUE TO EMPLOYEE: '+fmtI(net):'REFUND TO COMPANY: '+fmtI(Math.abs(net)))+'</b></div>';
   html+='<br><b style="color:'+H+'">EXPENSE DETAILS</b><br><br>';
   html+='<table><tr><th>Date</th><th>Category</th><th>Description / Purpose</th><th style="text-align:right">Amount</th><th>Receipt</th></tr>';
-  [...expenses].sort((a,b)=>a.date.localeCompare(b.date)).forEach(e=>{html+='<tr><td>'+fmt(e.date)+'</td><td>'+OFF_ICONS[e.cat]+' '+e.cat+'</td><td>'+e.purpose+'</td><td style="text-align:right">'+fmtI(e.amount)+'</td><td style="text-align:center">'+(e.receipt?'✅':'❌')+'</td></tr>';});
+  [...expenses].sort((a,b)=>a.date.localeCompare(b.date)).forEach(e=>{const rTag=e.receiptStatus==='attached'?'🧾 Attached':e.receiptStatus==='custom'?'📍 '+(e.receiptLocation||'Kept elsewhere'):(e.receipt&&!e.receiptStatus?'🧾 Attached':'❌ None');html+='<tr><td>'+fmt(e.date)+'</td><td>'+OFF_ICONS[e.cat]+' '+e.cat+'</td><td>'+e.purpose+'</td><td style="text-align:right">'+fmtI(e.amount)+'</td><td style="text-align:center;font-size:9pt;">'+rTag+'</td></tr>';});
   if(daAuto)html+='<tr style="background:#FFF8E1"><td colspan="2">💰 DA (Auto)</td><td>'+days+' days × '+(CURRENCY_SYMBOLS[trip.currency]||'₹')+trip.daRate+'</td><td style="text-align:right">'+fmtI(daAuto)+'</td><td style="text-align:center">—</td></tr>';
   html+='<tr class="tr"><td colspan="3"><b>TOTAL</b></td><td style="text-align:right"><b>'+fmtI(totalSpent)+'</b></td><td></td></tr></table>';
   html+='<div class="sig"><div class="sb">Submitted by<br><br>'+(p.name||'')+'<br>Date: ___________</div><div class="sb">Verified by<br><br>Accounts<br>Date: ___________</div><div class="sb">Approved by<br><br>Manager<br>Date: ___________</div></div></body></html>';
