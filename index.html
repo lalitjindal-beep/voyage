@@ -2064,10 +2064,22 @@ function selectExpCurrency(c) {
 function checkDuplicateExpense(val) {
   const warn = document.getElementById('exp-duplicate-warning');
   if (!warn) return;
-  if (expenseCtx === 'official') { warn.style.display = 'none'; return; }
-  const trip = getActiveTrip('bg');
+  const trip = expCtxTrip();
   if (!trip || !val.trim()) { warn.style.display = 'none'; return; }
   const q = val.trim().toLowerCase();
+  if (expenseCtx === 'official') {
+    const expenses = state.officialExpenses?.[trip.id] || [];
+    const matches = expenses.filter(e => (e.purpose||'').toLowerCase().includes(q));
+    warn.style.background = ''; warn.style.borderColor = ''; warn.style.color = '';
+    if (matches.length) {
+      warn.style.display = 'block';
+      warn.innerHTML = `⚠️ Similar expense${matches.length > 1 ? 's' : ''} already logged:<br>` +
+        matches.map(m => `&nbsp;&nbsp;• <b>${m.purpose}</b> <span style="color:#a07820;">(${fmtCurrency(m.amountOriginal??m.amount, m.currency || trip.currency)} · ${m.cat})</span>`).join('<br>');
+    } else {
+      warn.style.display = 'none';
+    }
+    return;
+  }
   const expenses = state.expenses[trip.id] || [];
   const matches = expenses.filter(e => e.name.toLowerCase().includes(q));
   if (matches.length) {
@@ -2770,10 +2782,20 @@ function checkDuplicateExpenseEdit(val) {
   const expId = document.getElementById('edit-exp-id').value;
   if (!tripId || !val.trim()) { warn.style.display = 'none'; return; }
   const q = val.trim().toLowerCase();
+  const trip = state.trips.find(t=>t.id===tripId);
+  if (expenseCtx === 'official') {
+    const expenses = (state.officialExpenses?.[tripId] || []).filter(e => e.id !== expId);
+    const matches = expenses.filter(e => (e.purpose||'').toLowerCase().includes(q));
+    if (matches.length) {
+      warn.style.display = 'block';
+      warn.innerHTML = `⚠️ Similar expense${matches.length > 1 ? 's' : ''} already logged:<br>` +
+        matches.map(m => `&nbsp;&nbsp;• <b>${m.purpose}</b> <span style="color:#a07820;">(${fmtCurrency(m.amountOriginal??m.amount, m.currency || trip?.currency)} · ${m.cat})</span>`).join('<br>');
+    } else { warn.style.display = 'none'; }
+    return;
+  }
   const expenses = (state.expenses[tripId] || []).filter(e => e.id !== expId);
   const matches = expenses.filter(e => e.name.toLowerCase().includes(q));
   if (matches.length) {
-    const trip = state.trips.find(t=>t.id===tripId);
     warn.style.display = 'block';
     warn.innerHTML = `⚠️ Similar expense${matches.length > 1 ? 's' : ''} already logged:<br>` +
       matches.map(m => `&nbsp;&nbsp;• <b>${m.name}</b> <span style="color:#a07820;">(${fmtCurrency(m.amount, m.currency || trip?.currency)} · ${m.cat})</span>`).join('<br>');
