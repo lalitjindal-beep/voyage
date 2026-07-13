@@ -344,6 +344,7 @@
   .btn-import:active { opacity: 0.8; }
   .backup-hint { font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; line-height: 1.4; }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
 <!-- SCREENS -->
@@ -567,6 +568,7 @@
 <div class="page-header">
 <div><div class="page-title">More 🔧</div></div>
 </div>
+<button onclick="openGlobalSearchSheet()" style="width:100%;display:flex;align-items:center;gap:10px;padding:14px 16px;background:var(--sky-light);border:1.5px solid var(--sky);border-radius:14px;font-size:14px;font-weight:700;color:var(--sky-dark);cursor:pointer;margin-bottom:20px;font-family:inherit;">🔍 Search Everything <span style="font-weight:400;color:var(--muted);font-size:12px;margin-left:auto;">All trips, all expenses</span></button>
 <div class="section-label">✈️ Pre-departure Checklist</div>
 <div id="predep-checklist" style="margin-bottom:16px;"></div>
 <div class="section-label">📄 Document Vault</div>
@@ -907,6 +909,19 @@
 <input class="form-input" id="off-new-cur-rate" type="number" placeholder="rate" step="0.0001" style="flex:1;" />
 <button onclick="addOfficialTripCurrency()" style="padding:0 16px;background:var(--sky);color:white;border:none;border-radius:12px;font-size:20px;cursor:pointer;flex-shrink:0;height:46px;">+</button>
 </div>
+</div>
+</div>
+<!-- Global Search Sheet -->
+<div class="overlay" id="overlay-sheet-global-search" onclick="closeSheet('sheet-global-search')"></div>
+<div class="sheet" id="sheet-global-search" style="max-height:92vh;">
+<div class="sheet-handle"></div>
+<div class="sheet-title">🔍 Search Everything</div>
+<div class="sheet-body">
+<div style="position:relative;margin-bottom:14px;">
+<span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);font-size:16px;pointer-events:none;">🔍</span>
+<input class="form-input" id="global-search-input" placeholder="Search expenses, activities, documents…" style="padding-left:40px;" oninput="debounceGlobalSearch()" autofocus/>
+</div>
+<div id="global-search-results"></div>
 </div>
 </div>
 <!-- Add Travel (Flight/Hotel) Sheet -->
@@ -1271,20 +1286,19 @@
 <div class="overlay" id="overlay-sheet-imprest" onclick="closeSheet('sheet-imprest')"></div>
 <div class="sheet" id="sheet-imprest">
   <div class="sheet-handle"></div>
-  <div class="sheet-title">💰 Imprest Taken</div>
+  <div class="sheet-title">💰 Imprest Top-ups</div>
   <div class="sheet-body">
     <div style="margin-bottom:12px;"><label class="form-label">Received In</label><div id="imprest-currency-chips" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;"></div></div>
-    <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:8px;">CALCULATE: RATE/DAY × PERSONS × DAYS <span style="font-weight:400;">(or just type a Total directly)</span></div>
     <div class="form-row" style="margin-bottom:12px;">
-      <div class="form-group" style="margin-bottom:0;"><label class="form-label">Persons</label><input class="form-input" id="imprest-persons" type="number" min="1" oninput="recalcAllImprest()"/></div>
-      <div class="form-group" style="margin-bottom:0;"><label class="form-label">Days</label><input class="form-input" id="imprest-days" type="number" min="1" oninput="recalcAllImprest()"/></div>
+      <div class="form-group" style="margin-bottom:0;"><label class="form-label">Persons</label><input class="form-input" id="imprest-persons" type="number" min="1"/></div>
+      <div class="form-group" style="margin-bottom:0;"><label class="form-label">Days (for rate calc)</label><input class="form-input" id="imprest-days" type="number" min="1"/></div>
     </div>
-    <div id="imprest-inputs"></div>
-    <div id="imprest-grand-total" style="display:none;background:var(--sky-light);border-radius:10px;padding:10px 14px;margin-bottom:12px;justify-content:space-between;align-items:center;">
-      <span style="font-size:13px;font-weight:600;color:var(--sky-dark);">Grand Total</span>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Tap a category to add a new top-up or see its history. Each tour can have several top-ups per category over time.</div>
+    <div id="imprest-cats-list"></div>
+    <div id="imprest-grand-total" style="display:none;background:var(--sky-light);border-radius:10px;padding:10px 14px;margin-top:4px;justify-content:space-between;align-items:center;">
+      <span style="font-size:13px;font-weight:600;color:var(--sky-dark);">Grand Total Taken</span>
       <span id="imprest-grand-total-amount" style="font-size:16px;font-weight:800;color:var(--sky-dark);"></span>
     </div>
-    <button class="btn-primary" onclick="saveImprest()">Save</button>
   </div>
 </div>
 <!-- TOAST -->
@@ -1361,6 +1375,31 @@ function load() {
     showToast('⚠️ Saved data could not be read — starting fresh');
   }
   migrateOfficialCategories();
+  migrateImprestToTopUps();
+}
+function migrateImprestToTopUps() {
+  state.trips.forEach(t => {
+    if (t.tripType !== 'official') return;
+    if (t.imprestTopUps) return; // already migrated
+    t.imprestTopUps = [];
+    const byCat = t.imprestByCat || {};
+    const byCatOrig = t.imprestByCatOriginal || {};
+    const cur = t.imprestCurrency || t.currency || 'INR';
+    Object.keys(byCat).forEach(cat => {
+      const amount = byCat[cat];
+      if (!amount) return;
+      t.imprestTopUps.push({
+        id: uid(), date: t.start || new Date().toISOString().slice(0,10),
+        cat, amount, amountOriginal: byCatOrig[cat] ?? amount, currency: cur, note: 'Initial advance'
+      });
+    });
+  });
+}
+function getImprestByCat(trip) {
+  const result = {};
+  OFF_CATS.forEach(c => result[c] = 0);
+  (trip.imprestTopUps || []).forEach(tu => { if (result[tu.cat] !== undefined) result[tu.cat] += tu.amount; });
+  return result;
 }
 function migrateOfficialCategories() {
   const rename = { 'Pocket': 'Reimbursement', 'Event': 'Incidental', 'Client': 'Incidental' };
@@ -2617,6 +2656,7 @@ function saveEditBudget() {
     if (!rateInput || !rate || rate <= 0) { showToast('Currency change cancelled — a rate is required'); return; }
     (state.expenses[trip.id]||[]).forEach(e => { e.amountBase = (e.amountBase ?? e.amount) * rate; });
     (state.officialExpenses?.[trip.id]||[]).forEach(e => { e.amount = e.amount * rate; });
+    if (trip.imprestTopUps) trip.imprestTopUps.forEach(tu => { tu.amount *= rate; });
     if (trip.imprestByCat) Object.keys(trip.imprestByCat).forEach(k => { trip.imprestByCat[k] *= rate; });
     if (trip.daRate) trip.daRate = trip.daRate * rate;
     (state.moneyIn?.[trip.id]||[]).forEach(m => { m.amount = m.amount * rate; });
@@ -3932,7 +3972,7 @@ const activeTrip = state.trips.find(t => t.start && t.end && now >= new Date(t.s
 const upcomingTrip = state.trips.filter(t => t.start && new Date(t.start+'T12:00') > now).sort((a,b) => new Date(a.start) - new Date(b.start))[0];
 const summaryHtml = '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px;">' + '<div class="card" style="text-align:center;padding:12px 8px;"><div style="font-size:22px;font-weight:800;color:var(--sky);">'+totalTrips+'</div><div style="font-size:10px;color:var(--muted);font-weight:600;">TRIPS</div></div>' + '<div class="card" style="text-align:center;padding:12px 8px;"><div style="font-size:22px;font-weight:800;color:var(--green);">'+(activeTrip?'1':upcomingTrip?'0':'—')+'</div><div style="font-size:10px;color:var(--muted);font-weight:600;">'+(activeTrip?'ACTIVE':upcomingTrip?'UPCOMING':'STATUS')+'</div></div>' + '<div class="card" style="text-align:center;padding:12px 8px;"><div style="font-size:22px;font-weight:800;color:var(--sand);">'+(allExp.length+allOfficialExp.length)+'</div><div style="font-size:10px;color:var(--muted);font-weight:600;">EXPENSES</div></div>' + '</div>';
 const tripCards = state.trips.map(t => { try { return _buildTripCard(t, now); } catch(e) { console.error('Trip card error:', t.dest, e); return ''; } }).join('');
-function _buildTripCard(t, now) { const expenses = state.expenses[t.id] || []; const moneyIn = (state.moneyIn?.[t.id]||[]).reduce((s,x)=>s+x.amount,0); const spent = expenses.reduce((s,e) => s+(e.amountBase||e.amount), 0); const budget = (t.budget||0) + moneyIn; const remaining = budget - spent; const pct = budget ? Math.min(100, Math.round((spent/budget)*100)) : 0; const packItems = state.packingLists[t.id] || []; const packed = packItems.filter(i=>i.checked).length; const packPct = packItems.length ? Math.round((packed/packItems.length)*100) : 0; const acts = (state.itineraries[t.id]||[]).length; const flights = (state.flights[t.id]||[]).length; const hotels = (state.hotels[t.id]||[]).length; const docs = (state.documents?.[t.id]||[]).length; const isOfficial = t.tripType==='official'; const officialExp = state.officialExpenses?.[t.id]||[]; const officialImprestByCat = t.imprestByCat||{}; const officialImprest = Object.values(officialImprestByCat).reduce((s,v)=>s+v,0); const officialDaAuto = (t.daRate && t.start && t.end && !officialExp.find(e=>e.cat==='DA')) ? t.daRate*Math.max(1,Math.round((new Date(t.end+'T12:00')-new Date(t.start+'T12:00'))/864e5)+1) : 0; const officialSpent = officialExp.reduce((s,e)=>s+e.amount,0) + officialDaAuto; const officialNet = officialImprest - officialSpent; const daysLeft = t.end ? Math.ceil((new Date(t.end+'T12:00') - now)/864e5) : null; const isActive = t.start && t.end && now >= new Date(t.start+'T12:00') && now <= new Date(t.end+'T12:00'); const cur = t.currency || ''; const tripDays = (t.start&&t.end) ? Math.max(1,Math.round((new Date(t.end+'T12:00')-new Date(t.start+'T12:00'))/864e5)+1) : null; const avgPerDay = tripDays && spent ? spent/tripDays : null; const daysElapsed = t.start ? Math.max(0,Math.min(tripDays||0,Math.ceil((now-new Date(t.start+'T12:00'))/864e5))) : 0; const projectedTotal = daysElapsed > 0 && tripDays && avgPerDay ? avgPerDay * tripDays : null; const overUnder = projectedTotal && budget ? projectedTotal - budget : null; const catTotals = {}; const payTotals = {}; expenses.forEach(e => { const amt = e.amountBase||e.amount; catTotals[e.cat] = (catTotals[e.cat]||0) + amt; const pm = e.payMethod==='💳 Credit Card'&&e.cardName ? '💳 '+e.cardName : (e.payMethod||'💵 Cash'); payTotals[pm] = (payTotals[pm]||0) + amt; }); const topCats = Object.keys(catTotals).sort((a,b)=>catTotals[b]-catTotals[a]); const biggest = expenses.length ? [...expenses].sort((a,b)=>(b.amountBase||b.amount)-(a.amountBase||a.amount))[0] : null; const expanded = dashExpandedTrips.has(t.id); const catBars = topCats.map(cat => { const amt = catTotals[cat], share = spent ? Math.round((amt/spent)*100) : 0; return '<div style="margin-bottom:8px;">' +'<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;">' +'<span style="color:var(--mid);">'+(CAT_ICONS[cat]||'📌')+' '+cat+'</span>' +'<span style="font-weight:600;color:var(--slate);">'+fmtCurrency(amt,cur)+' <span style="color:var(--muted);font-weight:400;">('+share+'%)</span></span></div>' +'<div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;">' +'<div style="height:100%;width:'+share+'%;background:var(--sky);border-radius:3px;"></div></div></div>'; }).join(''); const payRows = Object.keys(payTotals).sort((a,b)=>payTotals[b]-payTotals[a]).slice(0,5).map(pm => { const amt = payTotals[pm], share = spent ? Math.round((amt/spent)*100) : 0; return '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);">' +'<span style="font-size:12px;color:var(--mid);">'+pm+'</span>' +'<span style="font-size:12px;font-weight:700;">'+fmtCurrency(amt,cur)+' <span style="font-size:10px;color:var(--muted);font-weight:400;">('+share+'%)</span></span></div>'; }).join(''); const statBoxes = [ biggest ? { label:'BIGGEST EXPENSE', val: biggest.name, sub: fmtCurrency(biggest.amountBase||biggest.amount,cur), col:'var(--sky-dark)' } : null, avgPerDay ? { label:'AVG / DAY', val: fmtCurrency(avgPerDay,cur), sub: tripDays+'d trip', col:'var(--sky-dark)' } : null, projectedTotal ? { label:'PROJECTED TOTAL', val: fmtCurrency(projectedTotal,cur), sub: (overUnder>0?'⚠️ +'+fmtCurrency(overUnder,cur)+' over':'✅ '+fmtCurrency(Math.abs(overUnder||0),cur)+' under budget'), col: overUnder>0?'var(--red)':'var(--green)' } : null, moneyIn > 0 ? { label:'MONEY RECEIVED', val: '+'+fmtCurrency(moneyIn,cur), sub:'Added to budget', col:'var(--green)' } : null, ].filter(Boolean); const statHtml = statBoxes.length ? '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">' +statBoxes.map(b=>'<div style="background:var(--surface2);border-radius:10px;padding:10px;">' +'<div style="font-size:9px;color:var(--muted);font-weight:700;letter-spacing:.5px;">'+b.label+'</div>' +'<div style="font-size:13px;font-weight:800;color:'+b.col+';margin-top:3px;">'+b.val+'</div>' +'<div style="font-size:10px;color:var(--muted);">'+b.sub+'</div></div>').join('')+'</div>' : ''; const budgetBlockHtml = (isOfficial && !budget) ? '' : '<div style="margin-bottom:8px;">' +'<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px;"><span>💰 '+(isOfficial?'Personal Spending':'Budget')+'</span><span>'+fmtCurrency(spent,cur)+' / '+fmtCurrency(budget,cur)+(remaining<0?'<span style="color:var(--red);font-weight:700;">Over budget</span>':'<span style="color:var(--green);">'+fmtCurrency(remaining,cur)+' left</span>')+'</span></div>' +'<div style="display:flex;align-items:center;gap:6px;"><div style="flex:1;height:7px;background:var(--border);border-radius:4px;overflow:hidden;"><div style="height:100%;width:'+Math.min(pct,100)+'%;background:'+( pct>100?'var(--red)':pct>80?'var(--sand)':'var(--sky)')+';border-radius:4px;transition:width .4s;"></div></div><span style="font-size:10px;font-weight:700;color:'+(pct>100?'var(--red)':pct>80?'var(--sand)':'var(--green)')+';">'+Math.min(pct,999)+'%</span></div></div>'; const officialBlockHtml = !isOfficial ? '' : '<div style="margin-bottom:8px;background:var(--surface2);border-radius:10px;padding:8px 10px;">' +'<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px;"><span>💼 Official (Spent / Imprest)</span><span style="font-weight:700;color:'+(officialNet<0?'var(--red)':'var(--green)')+';">'+fmtCurrency(officialSpent,cur)+' / '+fmtCurrency(officialImprest,cur)+'</span></div>' +(officialImprest?'<div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;"><div style="height:100%;width:'+Math.min(100,Math.round(officialSpent/officialImprest*100))+'%;background:'+(officialNet<0?'var(--red)':'var(--green)')+';border-radius:3px;"></div></div>':'') +'<div style="font-size:10px;margin-top:4px;font-weight:600;color:'+(officialNet<0?'var(--red)':'var(--green)')+';">'+(officialNet<0?'⚠️ '+fmtCurrency(Math.abs(officialNet),cur)+' over — claim from company':(officialImprest?'✅ '+fmtCurrency(officialNet,cur)+' left of imprest':'No imprest set yet'))+'</div>' +'<div style="font-size:10px;color:var(--muted);margin-top:2px;">'+officialExp.length+' expense'+(officialExp.length!==1?'s':'')+' logged</div>' +'</div>'; const infoRow = '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px;">' +[['📅',acts,'Activities'],['✈️',flights,'Flights'],['🏨',hotels,'Hotels'],['📄',docs,'Docs']].map(([ic,n,lb])=> '<div style="background:var(--surface2);border-radius:10px;padding:8px 4px;text-align:center;">' +'<div style="font-size:16px;font-weight:800;color:var(--sky);">'+n+'</div>' +'<div style="font-size:9px;color:var(--muted);font-weight:600;">'+lb+'</div></div>').join('')+'</div>'; const analysisHtml = !expenses.length ? '<div style="font-size:12px;color:var(--muted);padding:8px 0;">No expenses logged yet</div>' : catBars +(payRows ? '<div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.5px;margin:12px 0 6px;">BY PAYMENT METHOD</div>'+payRows : '') + statHtml; return '<div class="card" style="margin-bottom:14px;">' +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">' +'<span style="font-size:28px;">'+t.emoji+'</span>'+(t.tripType==='official'?'<span style="font-size:10px;background:#1E3A5F;color:white;border-radius:6px;padding:2px 6px;margin-left:4px;font-weight:700;">💼 OFFICIAL</span>':'') +'<div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:16px;">'+t.dest+'</div>' +'<div style="font-size:12px;color:var(--muted);">'+(t.start?fmt(t.start):'')+(t.end?' → '+fmt(t.end):'')+'</div></div>' +(isActive?'<span style="background:var(--green);color:white;border-radius:8px;padding:3px 8px;font-size:11px;font-weight:700;flex-shrink:0;">ACTIVE</span>' :daysLeft>0?'<span style="background:var(--sky-light);color:var(--sky-dark);border-radius:8px;padding:3px 8px;font-size:11px;font-weight:600;flex-shrink:0;">In '+daysLeft+'d</span>':'') +'</div>' + infoRow + officialBlockHtml + budgetBlockHtml +'<div style="margin-bottom:8px;">' +'<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px;"><span>🧳 Packing</span><span>'+packed+'/'+packItems.length+' packed</span></div>' +'<div style="display:flex;align-items:center;gap:6px;"><div style="flex:1;height:7px;background:var(--border);border-radius:4px;overflow:hidden;"><div style="height:100%;width:'+packPct+'%;background:var(--sand);border-radius:4px;transition:width .4s;"></div></div><span style="font-size:10px;font-weight:700;color:var(--sand);">'+packPct+'%</span></div></div>' +'<div style="margin-bottom:8px;">'
+function _buildTripCard(t, now) { const expenses = state.expenses[t.id] || []; const moneyIn = (state.moneyIn?.[t.id]||[]).reduce((s,x)=>s+x.amount,0); const spent = expenses.reduce((s,e) => s+(e.amountBase||e.amount), 0); const budget = (t.budget||0) + moneyIn; const remaining = budget - spent; const pct = budget ? Math.min(100, Math.round((spent/budget)*100)) : 0; const packItems = state.packingLists[t.id] || []; const packed = packItems.filter(i=>i.checked).length; const packPct = packItems.length ? Math.round((packed/packItems.length)*100) : 0; const acts = (state.itineraries[t.id]||[]).length; const flights = (state.flights[t.id]||[]).length; const hotels = (state.hotels[t.id]||[]).length; const docs = (state.documents?.[t.id]||[]).length; const isOfficial = t.tripType==='official'; const officialExp = state.officialExpenses?.[t.id]||[]; const officialImprestByCat = t.imprestByCat||{}; const officialImprest = Object.values(officialImprestByCat).reduce((s,v)=>s+v,0); const officialDaAuto = (t.daRate && t.start && t.end && !officialExp.find(e=>e.cat==='DA')) ? t.daRate*Math.max(1,Math.round((new Date(t.end+'T12:00')-new Date(t.start+'T12:00'))/864e5)+1) : 0; const officialSpent = officialExp.reduce((s,e)=>s+e.amount,0) + officialDaAuto; const officialNet = officialImprest - officialSpent; const daysLeft = t.end ? Math.ceil((new Date(t.end+'T12:00') - now)/864e5) : null; const isActive = t.start && t.end && now >= new Date(t.start+'T12:00') && now <= new Date(t.end+'T12:00'); const cur = t.currency || ''; const tripDays = (t.start&&t.end) ? Math.max(1,Math.round((new Date(t.end+'T12:00')-new Date(t.start+'T12:00'))/864e5)+1) : null; const avgPerDay = tripDays && spent ? spent/tripDays : null; const daysElapsed = t.start ? Math.max(0,Math.min(tripDays||0,Math.ceil((now-new Date(t.start+'T12:00'))/864e5))) : 0; const projectedTotal = daysElapsed > 0 && tripDays && avgPerDay ? avgPerDay * tripDays : null; const overUnder = projectedTotal && budget ? projectedTotal - budget : null; const catTotals = {}; const payTotals = {}; expenses.forEach(e => { const amt = e.amountBase||e.amount; catTotals[e.cat] = (catTotals[e.cat]||0) + amt; const pm = e.payMethod==='💳 Credit Card'&&e.cardName ? '💳 '+e.cardName : (e.payMethod||'💵 Cash'); payTotals[pm] = (payTotals[pm]||0) + amt; }); const topCats = Object.keys(catTotals).sort((a,b)=>catTotals[b]-catTotals[a]); const biggest = expenses.length ? [...expenses].sort((a,b)=>(b.amountBase||b.amount)-(a.amountBase||a.amount))[0] : null; const expanded = dashExpandedTrips.has(t.id); const catBars = topCats.map(cat => { const amt = catTotals[cat], share = spent ? Math.round((amt/spent)*100) : 0; return '<div style="margin-bottom:8px;">' +'<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;">' +'<span style="color:var(--mid);">'+(CAT_ICONS[cat]||'📌')+' '+cat+'</span>' +'<span style="font-weight:600;color:var(--slate);">'+fmtCurrency(amt,cur)+' <span style="color:var(--muted);font-weight:400;">('+share+'%)</span></span></div>' +'<div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;">' +'<div style="height:100%;width:'+share+'%;background:var(--sky);border-radius:3px;"></div></div></div>'; }).join(''); const payRows = Object.keys(payTotals).sort((a,b)=>payTotals[b]-payTotals[a]).slice(0,5).map(pm => { const amt = payTotals[pm], share = spent ? Math.round((amt/spent)*100) : 0; return '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);">' +'<span style="font-size:12px;color:var(--mid);">'+pm+'</span>' +'<span style="font-size:12px;font-weight:700;">'+fmtCurrency(amt,cur)+' <span style="font-size:10px;color:var(--muted);font-weight:400;">('+share+'%)</span></span></div>'; }).join(''); const statBoxes = [ biggest ? { label:'BIGGEST EXPENSE', val: biggest.name, sub: fmtCurrency(biggest.amountBase||biggest.amount,cur), col:'var(--sky-dark)' } : null, avgPerDay ? { label:'AVG / DAY', val: fmtCurrency(avgPerDay,cur), sub: tripDays+'d trip', col:'var(--sky-dark)' } : null, projectedTotal ? { label:'PROJECTED TOTAL', val: fmtCurrency(projectedTotal,cur), sub: (overUnder>0?'⚠️ +'+fmtCurrency(overUnder,cur)+' over':'✅ '+fmtCurrency(Math.abs(overUnder||0),cur)+' under budget'), col: overUnder>0?'var(--red)':'var(--green)' } : null, moneyIn > 0 ? { label:'MONEY RECEIVED', val: '+'+fmtCurrency(moneyIn,cur), sub:'Added to budget', col:'var(--green)' } : null, ].filter(Boolean); const statHtml = statBoxes.length ? '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">' +statBoxes.map(b=>'<div style="background:var(--surface2);border-radius:10px;padding:10px;">' +'<div style="font-size:9px;color:var(--muted);font-weight:700;letter-spacing:.5px;">'+b.label+'</div>' +'<div style="font-size:13px;font-weight:800;color:'+b.col+';margin-top:3px;">'+b.val+'</div>' +'<div style="font-size:10px;color:var(--muted);">'+b.sub+'</div></div>').join('')+'</div>' : ''; const budgetBlockHtml = (isOfficial && !budget) ? '' : '<div style="margin-bottom:8px;">' +'<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px;"><span>💰 '+(isOfficial?'Personal Spending':'Budget')+'</span><span>'+fmtCurrency(spent,cur)+' / '+fmtCurrency(budget,cur)+(remaining<0?'<span style="color:var(--red);font-weight:700;">Over budget</span>':'<span style="color:var(--green);">'+fmtCurrency(remaining,cur)+' left</span>')+'</span></div>' +'<div style="display:flex;align-items:center;gap:6px;"><div style="flex:1;height:7px;background:var(--border);border-radius:4px;overflow:hidden;"><div style="height:100%;width:'+Math.min(pct,100)+'%;background:'+( pct>100?'var(--red)':pct>80?'var(--sand)':'var(--sky)')+';border-radius:4px;transition:width .4s;"></div></div><span style="font-size:10px;font-weight:700;color:'+(pct>100?'var(--red)':pct>80?'var(--sand)':'var(--green)')+';">'+Math.min(pct,999)+'%</span></div></div>'; const officialBlockHtml = !isOfficial ? '' : '<div style="margin-bottom:8px;background:var(--surface2);border-radius:10px;padding:8px 10px;">' +'<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px;"><span>💼 Official <span style="font-size:9px;padding:2px 6px;border-radius:5px;background:'+(t.officialStatus==='settled'?'var(--green-light)':t.officialStatus==='submitted'?'var(--sky-light)':'var(--surface)')+';color:'+(t.officialStatus==='settled'?'var(--green)':t.officialStatus==='submitted'?'var(--sky-dark)':'var(--muted)')+';font-weight:700;">'+(t.officialStatus==='settled'?'✅ Settled':t.officialStatus==='submitted'?'📤 Submitted':'📝 Draft')+'</span></span><span style="font-weight:700;color:'+(officialNet<0?'var(--red)':'var(--green)')+';">'+fmtCurrency(officialSpent,cur)+' / '+fmtCurrency(officialImprest,cur)+'</span></div>' +(officialImprest?'<div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;"><div style="height:100%;width:'+Math.min(100,Math.round(officialSpent/officialImprest*100))+'%;background:'+(officialNet<0?'var(--red)':'var(--green)')+';border-radius:3px;"></div></div>':'') +'<div style="font-size:10px;margin-top:4px;font-weight:600;color:'+(officialNet<0?'var(--red)':'var(--green)')+';">'+(officialNet<0?'⚠️ '+fmtCurrency(Math.abs(officialNet),cur)+' over — claim from company':(officialImprest?'✅ '+fmtCurrency(officialNet,cur)+' left of imprest':'No imprest set yet'))+'</div>' +'<div style="font-size:10px;color:var(--muted);margin-top:2px;">'+officialExp.length+' expense'+(officialExp.length!==1?'s':'')+' logged</div>' +'</div>'; const infoRow = '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px;">' +[['📅',acts,'Activities'],['✈️',flights,'Flights'],['🏨',hotels,'Hotels'],['📄',docs,'Docs']].map(([ic,n,lb])=> '<div style="background:var(--surface2);border-radius:10px;padding:8px 4px;text-align:center;">' +'<div style="font-size:16px;font-weight:800;color:var(--sky);">'+n+'</div>' +'<div style="font-size:9px;color:var(--muted);font-weight:600;">'+lb+'</div></div>').join('')+'</div>'; const analysisHtml = !expenses.length ? '<div style="font-size:12px;color:var(--muted);padding:8px 0;">No expenses logged yet</div>' : catBars +(payRows ? '<div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.5px;margin:12px 0 6px;">BY PAYMENT METHOD</div>'+payRows : '') + statHtml; return '<div class="card" style="margin-bottom:14px;">' +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">' +'<span style="font-size:28px;">'+t.emoji+'</span>'+(t.tripType==='official'?'<span style="font-size:10px;background:#1E3A5F;color:white;border-radius:6px;padding:2px 6px;margin-left:4px;font-weight:700;">💼 OFFICIAL</span>':'') +'<div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:16px;">'+t.dest+'</div>' +'<div style="font-size:12px;color:var(--muted);">'+(t.start?fmt(t.start):'')+(t.end?' → '+fmt(t.end):'')+'</div></div>' +(isActive?'<span style="background:var(--green);color:white;border-radius:8px;padding:3px 8px;font-size:11px;font-weight:700;flex-shrink:0;">ACTIVE</span>' :daysLeft>0?'<span style="background:var(--sky-light);color:var(--sky-dark);border-radius:8px;padding:3px 8px;font-size:11px;font-weight:600;flex-shrink:0;">In '+daysLeft+'d</span>':'') +'</div>' + infoRow + officialBlockHtml + budgetBlockHtml +'<div style="margin-bottom:8px;">' +'<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px;"><span>🧳 Packing</span><span>'+packed+'/'+packItems.length+' packed</span></div>' +'<div style="display:flex;align-items:center;gap:6px;"><div style="flex:1;height:7px;background:var(--border);border-radius:4px;overflow:hidden;"><div style="height:100%;width:'+packPct+'%;background:var(--sand);border-radius:4px;transition:width .4s;"></div></div><span style="font-size:10px;font-weight:700;color:var(--sand);">'+packPct+'%</span></div></div>' +'<div style="margin-bottom:8px;">'
       +(t.rating||t.memory
         ? '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;">'
           +'<span style="font-size:16px;">'+('⭐'.repeat(t.rating||0))+'</span>'
@@ -4196,9 +4236,61 @@ function getOfficialTrip(){
   const officials=state.trips.filter(t=>t.tripType==='official');
   return officials.length===1?officials[0]:null;
 }
+let _globalSearchTimer;
+function debounceGlobalSearch(){clearTimeout(_globalSearchTimer);_globalSearchTimer=setTimeout(renderGlobalSearchResults,200);}
+function openGlobalSearchSheet(){
+  const inp=document.getElementById('global-search-input');
+  if(inp)inp.value='';
+  const results=document.getElementById('global-search-results');
+  if(results)results.innerHTML='<div style="font-size:12px;color:var(--muted);text-align:center;padding:20px 0;">Type to search across all your trips — expenses, activities, documents</div>';
+  openSheet('sheet-global-search');
+  setTimeout(()=>document.getElementById('global-search-input')?.focus(),300);
+}
+function renderGlobalSearchResults(){
+  const q=(document.getElementById('global-search-input')?.value||'').trim().toLowerCase();
+  const container=document.getElementById('global-search-results');
+  if(!container)return;
+  if(!q){container.innerHTML='<div style="font-size:12px;color:var(--muted);text-align:center;padding:20px 0;">Type to search across all your trips — expenses, activities, documents</div>';return;}
+  const tripName=id=>state.trips.find(t=>t.id===id)?.dest||'Unknown trip';
+  let results=[];
+  state.trips.forEach(t=>{
+    (state.expenses[t.id]||[]).forEach(e=>{
+      if((e.name||'').toLowerCase().includes(q))results.push({icon:'💰',type:'Budget Expense',title:e.name,sub:tripName(t.id)+' · '+fmt(e.date),amount:fmtCurrency(e.amountBase||e.amount,e.currency||t.currency),tripId:t.id,activeKey:'bg',screen:'budget'});
+    });
+    (state.officialExpenses?.[t.id]||[]).forEach(e=>{
+      if((e.purpose||'').toLowerCase().includes(q))results.push({icon:'💼',type:'Official Expense',title:e.purpose,sub:tripName(t.id)+' · '+fmt(e.date)+' · '+e.cat,amount:fmtCurrency(e.amount,t.currency),tripId:t.id,activeKey:'official',screen:'official'});
+    });
+    (state.itineraries[t.id]||[]).forEach(a=>{
+      if((a.name||'').toLowerCase().includes(q))results.push({icon:'📅',type:'Activity',title:a.name,sub:tripName(t.id)+(a.date?' · '+fmt(a.date):''),amount:'',tripId:t.id,activeKey:'it',screen:'itinerary'});
+    });
+    (state.documents?.[t.id]||[]).forEach(doc=>{
+      if((doc.name||'').toLowerCase().includes(q))results.push({icon:'📄',type:'Document',title:doc.name,sub:tripName(t.id)+(doc.type?' · '+doc.type:''),amount:'',tripId:t.id,activeKey:'docs',screen:'more'});
+    });
+  });
+  if(!results.length){container.innerHTML='<div style="font-size:12px;color:var(--muted);text-align:center;padding:20px 0;">No matches for "<b>'+q+'</b>"</div>';return;}
+  container.innerHTML='<div style="font-size:11px;color:var(--muted);margin-bottom:8px;">'+results.length+' result'+(results.length!==1?'s':'')+'</div>'+results.map(r=>
+    '<div class="card" style="display:flex;gap:10px;align-items:center;padding:10px 12px;margin-bottom:8px;cursor:pointer;" onclick="jumpToGlobalResult(\''+r.tripId+'\',\''+r.activeKey+'\',\''+r.screen+'\')">'+
+    '<span style="font-size:20px;">'+r.icon+'</span>'+
+    '<div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:600;">'+r.title+'</div><div style="font-size:11px;color:var(--muted);">'+r.type+' · '+r.sub+'</div></div>'+
+    (r.amount?'<div style="font-size:13px;font-weight:700;">'+r.amount+'</div>':'')+
+    '</div>'
+  ).join('');
+}
+function jumpToGlobalResult(tripId,activeKey,screen){
+  state.activeTripId[activeKey]=tripId;
+  save();
+  closeSheet('sheet-global-search');
+  switchTab(screen);
+}
 let offExpFilter='All';
 let offExpPageSize=25;
 let offBreakdownExpanded=true;
+function setOfficialStatus(status){
+  const trip=getOfficialTrip();if(!trip)return;
+  trip.officialStatus=status;
+  save();renderOfficial();renderDashboard();
+  showToast('Status: '+status.charAt(0).toUpperCase()+status.slice(1));
+}
 let _officialSearchTimer;
 function debounceRenderOfficial(){clearTimeout(_officialSearchTimer);_officialSearchTimer=setTimeout(renderOfficial,220);}
 function toggleOffBreakdown(){offBreakdownExpanded=!offBreakdownExpanded;renderOfficial();}
@@ -4221,8 +4313,9 @@ function renderOfficial(){
   }
   if(fab)fab.style.display='flex';
   if(searchWrap)searchWrap.style.display='block';
+  if(!trip.officialStatus)trip.officialStatus='draft';
   const expenses=state.officialExpenses?.[trip.id]||[];
-  const imprestByCat=trip.imprestByCat||{};
+  const imprestByCat=getImprestByCat(trip);
   const imprest=OFF_CATS.reduce((s,k)=>s+(imprestByCat[k]||0),0);
   const days=trip.start&&trip.end?Math.max(1,Math.round((new Date(trip.end+'T12:00')-new Date(trip.start+'T12:00'))/864e5)+1):0;
   const daAuto=trip.daRate&&days&&!expenses.find(e=>e.cat==='DA')?trip.daRate*days:0;
@@ -4234,7 +4327,9 @@ function renderOfficial(){
   const netPayable=totalReimb-imprest;
   const pct=imprest?Math.round(totalSpent/imprest*100):0;
   const fmtI=v=>(CURRENCY_SYMBOLS[trip.currency]||'₹')+Math.round(v).toLocaleString('en-IN');
-  let html='<div class="card" style="margin-bottom:14px;">';
+  const STATUS_MAP={draft:{label:'📝 Draft',bg:'var(--surface2)',color:'var(--mid)'},submitted:{label:'📤 Submitted',bg:'var(--sky-light)',color:'var(--sky-dark)'},settled:{label:'✅ Settled',bg:'var(--green-light)',color:'var(--green)'}};
+  let html='<div style="display:flex;gap:6px;margin-bottom:12px;">'+Object.keys(STATUS_MAP).map(s=>'<div onclick="setOfficialStatus(\''+s+'\')" style="cursor:pointer;font-size:12px;font-weight:600;padding:7px 12px;border-radius:10px;background:'+(trip.officialStatus===s?STATUS_MAP[s].bg:'var(--surface2)')+';color:'+(trip.officialStatus===s?STATUS_MAP[s].color:'var(--muted)')+';border:1.5px solid '+(trip.officialStatus===s?STATUS_MAP[s].color:'transparent')+';">'+STATUS_MAP[s].label+'</div>').join('')+'</div>';
+  html+='<div class="card" style="margin-bottom:14px;">';
   html+='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">';
   html+='<div><div style="font-size:16px;font-weight:700;">'+trip.emoji+' '+trip.dest+'</div>';
   html+='<div style="font-size:11px;color:var(--muted);">'+(trip.purpose||'')+'</div>';
@@ -4312,7 +4407,13 @@ function renderOfficial(){
   if(!sorted.length)html+='<div style="font-size:12px;color:var(--muted);padding:12px 0;text-align:center;">'+(q?'No expenses match "<b>'+q+'</b>"':'No expenses'+(offExpFilter!=='All'?' in this category':'')+' yet')+'</div>';
   if(sorted.length>visible.length)html+='<button onclick="offExpPageSize+=25;renderOfficial();" style="width:100%;padding:11px;border:1.5px dashed var(--border);border-radius:12px;background:none;color:var(--sky);font-size:13px;font-weight:600;cursor:pointer;margin-bottom:8px;font-family:inherit;">Show '+Math.min(25,sorted.length-visible.length)+' more ('+(sorted.length-visible.length)+' left)</button>';
   if(daAuto)html+='<div class="card" style="padding:10px 12px;margin-bottom:8px;background:var(--sky-light);"><span style="font-size:13px;font-weight:600;">💰 DA (auto) — '+days+' days × '+(CURRENCY_SYMBOLS[trip.currency]||'₹')+trip.daRate+'</span><div style="font-size:11px;color:var(--muted);">Calculated automatically</div><div style="font-size:14px;font-weight:700;text-align:right;">'+fmtI(daAuto)+'</div></div>';
-  html+='<button onclick="exportExpenseSummary()" style="width:100%;margin-top:8px;padding:13px;background:#E8F5E9;color:#2E7D32;border:1.5px solid #4CAF50;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">📊 Generate Summary</button>';
+  html+='<div style="font-size:12px;font-weight:700;color:var(--muted);margin:10px 0 8px;">📊 EXPORT SUMMARY</div>';
+  html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">';
+  html+='<button onclick="exportSummaryXlsx()" style="padding:12px 8px;background:#E8F5E9;color:#2E7D32;border:1.5px solid #4CAF50;border-radius:12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">📗 Excel (.xlsx)</button>';
+  html+='<button onclick="exportSummaryHtml()" style="padding:12px 8px;background:var(--sky-light);color:var(--sky-dark);border:1.5px solid var(--sky);border-radius:12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">🌐 HTML</button>';
+  html+='<button onclick="exportSummaryPdf()" style="padding:12px 8px;background:#FFEBEE;color:#C62828;border:1.5px solid #E57373;border-radius:12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">📕 PDF (Print)</button>';
+  html+='<button onclick="exportSummaryWhatsapp()" style="padding:12px 8px;background:#E8F5E9;color:#25D366;border:1.5px solid #25D366;border-radius:12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">💬 WhatsApp</button>';
+  html+='</div>';
   container.innerHTML=html;
 }
 let expenseCtx='budget';
@@ -4331,6 +4432,7 @@ function openBudgetAddExpense(){
 }
 function editOfficialExp(tripId,expId){ openEditExpense(tripId,expId,'official'); }
 let imprestSelectedCurrency=null;
+let imprestExpandedCat=null;
 function openImprestSheet(){
   const trip=getOfficialTrip();if(!trip)return;
   const days=trip.start&&trip.end?Math.max(1,Math.round((new Date(trip.end+'T12:00')-new Date(trip.start+'T12:00'))/864e5)+1):1;
@@ -4338,22 +4440,9 @@ function openImprestSheet(){
   if(pEl)pEl.value=trip.persons||1;
   if(dEl)dEl.value=days;
   imprestSelectedCurrency=trip.imprestCurrency||trip.currency||'INR';
+  imprestExpandedCat=null;
   renderImprestCurrencyChips();
-  const icont=document.getElementById('imprest-inputs');
-  if(icont){
-    const imp=trip.imprestByCatOriginal||trip.imprestByCat||{};
-    const rates=trip.imprestRates||{};
-    icont.innerHTML=OFF_CATS.map(cat=>
-      '<div style="background:var(--surface2);border-radius:10px;padding:10px;margin-bottom:8px;">'+
-      '<div style="font-size:12px;font-weight:600;margin-bottom:6px;">'+OFF_ICONS[cat]+' '+cat+(cat==='DA'?' <span style="font-weight:400;color:var(--muted);">— allowance received</span>':cat==='Reimbursement'?' <span style="font-weight:400;color:var(--muted);">— daily pocket money</span>':'')+'</div>'+
-      '<div style="display:flex;align-items:center;gap:6px;">'+
-      '<input class="form-input imprest-rate" data-cat="'+cat+'" type="number" placeholder="Rate/day" value="'+(rates[cat]||'')+'" style="flex:1;font-size:12px;padding:8px;" oninput="recalcImprestRow(\''+cat+'\')"/>'+
-      '<span style="font-size:10px;color:var(--muted);white-space:nowrap;">× P × D =</span>'+
-      '<input class="form-input imprest-total" data-cat="'+cat+'" type="number" placeholder="Total" value="'+(imp[cat]||'')+'" style="flex:1;font-size:13px;font-weight:700;padding:8px;" oninput="updateImprestGrandTotal()"/>'+
-      '</div>'+(cat==='DA'?'<div style="font-size:10px;color:var(--muted);margin-top:5px;">This is what you were <b>given</b> as DA. The DA <b>spend</b> auto-calc (in Add Trip) is separate.</div>':cat==='Reimbursement'?'<div style="font-size:10px;color:var(--muted);margin-top:5px;">Typical rate: <b>10 USD/EUR per day</b> for tours up to 10 days, <b>8 USD/EUR per day</b> for longer tours.</div>':'')+'</div>'
-    ).join('');
-  }
-  updateImprestGrandTotal();
+  renderImprestCatsList();
   openSheet('sheet-imprest');
 }
 function renderImprestCurrencyChips(){
@@ -4364,53 +4453,98 @@ function renderImprestCurrencyChips(){
   if(!imprestSelectedCurrency||!currencies.includes(imprestSelectedCurrency))imprestSelectedCurrency=baseCur;
   container.innerHTML=currencies.map(c=>'<div class="chip'+(c===imprestSelectedCurrency?' active':'')+'" onclick="selectImprestCurrency(\''+c+'\')">'+(CURRENCY_SYMBOLS[c]||c)+' '+c+(c===baseCur?' (base)':'')+'</div>').join('')+'<div class="chip" onclick="openOfficialCurrenciesSheet()" style="border-style:dashed;color:var(--sky);">+ Add currency</div>';
 }
-function selectImprestCurrency(c){imprestSelectedCurrency=c;renderImprestCurrencyChips();updateImprestGrandTotal();}
-function recalcImprestRow(cat){
+function selectImprestCurrency(c){imprestSelectedCurrency=c;renderImprestCurrencyChips();}
+function toggleImprestCatExpand(cat){imprestExpandedCat=(imprestExpandedCat===cat)?null:cat;renderImprestCatsList();}
+function recalcImprestNewAmount(cat){
   const persons=parseFloat(document.getElementById('imprest-persons')?.value)||1;
   const days=parseFloat(document.getElementById('imprest-days')?.value)||1;
-  const rateEl=document.querySelector('.imprest-rate[data-cat="'+cat+'"]');
-  const totalEl=document.querySelector('.imprest-total[data-cat="'+cat+'"]');
+  const rateEl=document.getElementById('imprest-new-rate-'+cat);
+  const amtEl=document.getElementById('imprest-new-amount-'+cat);
   const rate=parseFloat(rateEl?.value)||0;
-  if(totalEl)totalEl.value=rate?Math.round(rate*persons*days):'';
-  updateImprestGrandTotal();
+  if(amtEl&&rate)amtEl.value=Math.round(rate*persons*days);
 }
-function recalcAllImprest(){
-  OFF_CATS.forEach(cat=>{
-    const rateEl=document.querySelector('.imprest-rate[data-cat="'+cat+'"]');
-    if(rateEl&&parseFloat(rateEl.value)>0)recalcImprestRow(cat);
-  });
-  updateImprestGrandTotal();
-}
-function updateImprestGrandTotal(){
-  const totalEls=document.querySelectorAll('.imprest-total[data-cat]');
-  let total=0;
-  totalEls.forEach(el=>{total+=parseFloat(el.value)||0;});
+function renderImprestCatsList(){
+  const trip=getOfficialTrip(),container=document.getElementById('imprest-cats-list');
+  if(!trip||!container)return;
+  const byCat=getImprestByCat(trip);
+  const fmtI=v=>(CURRENCY_SYMBOLS[trip.currency]||'₹')+Math.round(v).toLocaleString('en-IN');
+  let grandTotal=0;
+  container.innerHTML=OFF_CATS.map(cat=>{
+    const total=byCat[cat]||0;
+    grandTotal+=total;
+    const expanded=imprestExpandedCat===cat;
+    const topUps=(trip.imprestTopUps||[]).filter(tu=>tu.cat===cat).sort((a,b)=>b.date.localeCompare(a.date));
+    let html='<div class="card" style="padding:10px 12px;margin-bottom:8px;">';
+    html+='<div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" onclick="toggleImprestCatExpand(\''+cat+'\')">';
+    html+='<span style="font-size:13px;font-weight:600;">'+OFF_ICONS[cat]+' '+cat+(cat==='DA'?' <span style="font-weight:400;color:var(--muted);font-size:11px;">— allowance received</span>':cat==='Reimbursement'?' <span style="font-weight:400;color:var(--muted);font-size:11px;">— daily pocket money</span>':'')+'</span>';
+    html+='<span style="display:flex;align-items:center;gap:8px;"><b style="font-size:14px;">'+fmtI(total)+'</b><span style="font-size:12px;color:var(--muted);">'+(expanded?'▲':'▼')+'</span></span>';
+    html+='</div>';
+    if(expanded){
+      html+='<div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px;">';
+      if(cat==='Reimbursement')html+='<div style="font-size:10px;color:var(--muted);margin-bottom:8px;">Typical rate: <b>10 USD/EUR per day</b> for tours up to 10 days, <b>8 USD/EUR per day</b> for longer tours.</div>';
+      if(cat==='DA')html+='<div style="font-size:10px;color:var(--muted);margin-bottom:8px;">This is what you were <b>given</b> as DA. The DA <b>spend</b> auto-calc (in Add Trip) is separate.</div>';
+      html+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">';
+      html+='<input class="form-input" id="imprest-new-rate-'+cat+'" type="number" placeholder="Rate/day" style="flex:1;font-size:12px;padding:8px;" oninput="recalcImprestNewAmount(\''+cat+'\')"/>';
+      html+='<span style="font-size:10px;color:var(--muted);white-space:nowrap;">×P×D=</span>';
+      html+='<input class="form-input" id="imprest-new-amount-'+cat+'" type="number" placeholder="Amount" style="flex:1;font-size:13px;font-weight:700;padding:8px;"/>';
+      html+='</div>';
+      html+='<div style="display:flex;gap:6px;margin-bottom:8px;">';
+      html+='<input class="form-input" id="imprest-new-date-'+cat+'" type="date" value="'+new Date().toISOString().slice(0,10)+'" style="flex:1;font-size:12px;padding:8px;"/>';
+      html+='<input class="form-input" id="imprest-new-note-'+cat+'" placeholder="Note (e.g. Mid-trip top-up)" style="flex:1.4;font-size:12px;padding:8px;"/>';
+      html+='</div>';
+      html+='<button onclick="addImprestTopUp(\''+cat+'\')" style="width:100%;padding:10px;background:var(--sky);color:white;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:10px;">+ Add Top-up</button>';
+      html+='<div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;">HISTORY ('+topUps.length+')</div>';
+      if(!topUps.length)html+='<div style="font-size:12px;color:var(--muted);padding:6px 0;">No top-ups yet</div>';
+      topUps.forEach(tu=>{
+        const isForeign=(tu.currency||trip.currency)!==trip.currency;
+        html+='<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px;">';
+        html+='<div><b>'+fmtI(tu.amount)+'</b>'+(isForeign?' <span style="color:var(--muted);font-size:10px;">('+fmtCurrency(tu.amountOriginal??tu.amount,tu.currency)+')</span>':'')+'<div style="color:var(--muted);font-size:10px;">'+fmt(tu.date)+(tu.note?' · '+tu.note:'')+'</div></div>';
+        html+='<span onclick="deleteImprestTopUp(\''+tu.id+'\')" style="color:var(--red);font-size:16px;cursor:pointer;padding:2px 6px;">×</span>';
+        html+='</div>';
+      });
+      html+='</div>';
+    }
+    html+='</div>';
+    return html;
+  }).join('');
   const box=document.getElementById('imprest-grand-total'),amtEl=document.getElementById('imprest-grand-total-amount');
   if(box&&amtEl){
-    if(total>0){box.style.display='flex';amtEl.textContent=(CURRENCY_SYMBOLS[imprestSelectedCurrency]||imprestSelectedCurrency||'')+' '+total.toLocaleString('en-IN');}
+    if(grandTotal>0){box.style.display='flex';amtEl.textContent=fmtI(grandTotal);}
     else box.style.display='none';
   }
 }
-function saveImprest(){
+function addImprestTopUp(cat){
   const trip=getOfficialTrip();if(!trip)return;
+  const amtEl=document.getElementById('imprest-new-amount-'+cat);
+  const dateEl=document.getElementById('imprest-new-date-'+cat);
+  const noteEl=document.getElementById('imprest-new-note-'+cat);
+  const amtOrig=parseFloat(amtEl?.value)||0;
+  if(!amtOrig){showToast('Enter an amount');return;}
   trip.persons=parseFloat(document.getElementById('imprest-persons')?.value)||trip.persons||1;
   const cur=imprestSelectedCurrency||trip.currency||'INR';
   const baseCur=trip.currency||'INR';
   const rates=state.exchangeRates?.[trip.id]||{};
   const rate=rates[cur+'_to_'+baseCur]||(cur===baseCur?1:1);
   trip.imprestCurrency=cur;
-  const rateEls=document.querySelectorAll('.imprest-rate[data-cat]');
-  const totalEls=document.querySelectorAll('.imprest-total[data-cat]');
-  trip.imprestRates={};trip.imprestByCat={};trip.imprestByCatOriginal={};
-  rateEls.forEach(el=>{const v=parseFloat(el.value)||0;if(v>0)trip.imprestRates[el.dataset.cat]=v;});
-  totalEls.forEach(el=>{const v=parseFloat(el.value)||0;if(v>0){trip.imprestByCat[el.dataset.cat]=v*rate;trip.imprestByCatOriginal[el.dataset.cat]=v;}});
-  save();closeSheet('sheet-imprest');renderOfficial();showToast('Saved ✅');
+  if(!trip.imprestTopUps)trip.imprestTopUps=[];
+  trip.imprestTopUps.push({id:uid(),date:dateEl?.value||new Date().toISOString().slice(0,10),cat,amount:amtOrig*rate,amountOriginal:amtOrig,currency:cur,note:noteEl?.value.trim()||''});
+  save();
+  renderImprestCatsList();
+  renderOfficial();
+  showToast('Top-up added ✅');
 }
-function exportExpenseSummary(){
+function deleteImprestTopUp(id){
   const trip=getOfficialTrip();if(!trip)return;
+  trip.imprestTopUps=(trip.imprestTopUps||[]).filter(tu=>tu.id!==id);
+  save();
+  renderImprestCatsList();
+  renderOfficial();
+  showToast('Deleted');
+}
+function computeSummaryData(trip){
   const p=state.officialProfile||{};
   const expenses=state.officialExpenses?.[trip.id]||[];
-  const imprestByCat=trip.imprestByCat||{};
+  const imprestByCat=getImprestByCat(trip);
   const imprest=OFF_CATS.reduce((s,k)=>s+(imprestByCat[k]||0),0);
   const days=trip.start&&trip.end?Math.max(1,Math.round((new Date(trip.end+'T12:00')-new Date(trip.start+'T12:00'))/864e5)+1):0;
   const daAuto=trip.daRate&&days&&!expenses.find(e=>e.cat==='DA')?trip.daRate*days:0;
@@ -4422,8 +4556,13 @@ function exportExpenseSummary(){
   const net=totalReimb-imprest;
   const receipts=expenses.filter(e=>e.receipt).length;
   const fmtI=v=>v?(CURRENCY_SYMBOLS[trip.currency]||'₹')+Math.round(v).toLocaleString('en-IN'):'—';
+  return {p,expenses,imprestByCat,imprest,days,daAuto,catT,totalSpent,totalReimb,net,receipts,fmtI};
+}
+function buildSummaryHtmlDoc(trip){
+  const d=computeSummaryData(trip);
+  const {p,expenses,imprestByCat,imprest,days,daAuto,catT,totalSpent,totalReimb,net,receipts,fmtI}=d;
   const H='#1E3A5F';
-  let html='<html><head><meta charset="UTF-8"><style>body{font-family:Arial;font-size:11pt;margin:30px}table{width:100%;border-collapse:collapse}th{background:'+H+';color:#fff;padding:8px 10px;text-align:left}td{padding:7px 10px;border:1px solid #ccc}tr:nth-child(even){background:#F5F5F5}.title{font-size:16pt;font-weight:bold;color:'+H+'}.tr{background:#E3F2FD;font-weight:bold}.settle{padding:14px;border-radius:8px;margin:16px 0}.sig{margin-top:40px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px}.sb{border-top:1px solid #999;padding-top:6px;font-size:10pt;color:#555}</style></head><body>';
+  let html='<html><head><meta charset="UTF-8"><title>Expense Summary - '+trip.dest+'</title><style>body{font-family:Arial;font-size:11pt;margin:30px}table{width:100%;border-collapse:collapse}th{background:'+H+';color:#fff;padding:8px 10px;text-align:left}td{padding:7px 10px;border:1px solid #ccc}tr:nth-child(even){background:#F5F5F5}.title{font-size:16pt;font-weight:bold;color:'+H+'}.tr{background:#E3F2FD;font-weight:bold}.settle{padding:14px;border-radius:8px;margin:16px 0}.sig{margin-top:40px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px}.sb{border-top:1px solid #999;padding-top:6px;font-size:10pt;color:#555}</style></head><body>';
   html+='<div class="title">OFFICIAL TOUR EXPENSE SUMMARY</div>';
   html+='<table style="margin:16px 0;border:none"><tr><td style="border:none;width:50%"><b>Name:</b> '+(p.name||'_______')+'</td><td style="border:none"><b>Employee ID:</b> '+(p.empId||'_______')+'</td></tr>';
   html+='<tr><td style="border:none"><b>Designation:</b> '+(p.desig||'_______')+'</td><td style="border:none"><b>Department:</b> '+(p.dept||'_______')+'</td></tr>';
@@ -4442,11 +4581,82 @@ function exportExpenseSummary(){
   if(daAuto)html+='<tr style="background:#FFF8E1"><td colspan="2">💰 DA (Auto)</td><td>'+days+' days × '+(CURRENCY_SYMBOLS[trip.currency]||'₹')+trip.daRate+'</td><td style="text-align:right">'+fmtI(daAuto)+'</td><td style="text-align:center">—</td></tr>';
   html+='<tr class="tr"><td colspan="3"><b>TOTAL</b></td><td style="text-align:right"><b>'+fmtI(totalSpent)+'</b></td><td></td></tr></table>';
   html+='<div class="sig"><div class="sb">Submitted by<br><br>'+(p.name||'')+'<br>Date: ___________</div><div class="sb">Verified by<br><br>Accounts<br>Date: ___________</div><div class="sb">Approved by<br><br>Manager<br>Date: ___________</div></div></body></html>';
-  const blob=new Blob([html],{type:'application/vnd.ms-excel;charset=utf-8'});
+  return html;
+}
+function exportSummaryHtml(){
+  const trip=getOfficialTrip();if(!trip)return;
+  const html=buildSummaryHtmlDoc(trip);
+  const blob=new Blob([html],{type:'text/html;charset=utf-8'});
   const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');a.href=url;a.download='ExpenseSummary-'+trip.dest.replace(/[^a-z0-9]/gi,'-')+'.xls';
+  const a=document.createElement('a');a.href=url;a.download='ExpenseSummary-'+trip.dest.replace(/[^a-z0-9]/gi,'-')+'.html';
   document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
-  showToast('Expense Summary exported ✅');
+  showToast('HTML summary downloaded ✅');
+}
+function exportSummaryPdf(){
+  const trip=getOfficialTrip();if(!trip)return;
+  const html=buildSummaryHtmlDoc(trip);
+  const w=window.open('','_blank');
+  if(!w){showToast('Please allow popups to print/save as PDF');return;}
+  w.document.open();w.document.write(html);w.document.close();
+  setTimeout(()=>{w.focus();w.print();},400);
+  showToast('Opening print dialog — choose "Save as PDF" ✅');
+}
+function exportSummaryXlsx(){
+  const trip=getOfficialTrip();if(!trip)return;
+  if(typeof XLSX==='undefined'){showToast('Excel library still loading — try again in a moment');return;}
+  const d=computeSummaryData(trip);
+  const {p,expenses,imprestByCat,imprest,days,daAuto,catT,totalSpent,totalReimb,net,receipts}=d;
+  const wb=XLSX.utils.book_new();
+  const info=[
+    ['OFFICIAL TOUR EXPENSE SUMMARY'],[],
+    ['Name',p.name||'','Employee ID',p.empId||''],
+    ['Designation',p.desig||'','Department',p.dept||''],
+    ['Destination',trip.dest,'Purpose',trip.purpose||''],
+    ['Dates',(trip.start?fmt(trip.start):'')+' to '+(trip.end?fmt(trip.end):''),'Persons',trip.persons||1],
+    ['Days',days,'Receipts',receipts+'/'+expenses.length],
+    []
+  ];
+  const catRows=[['Category','Taken','Actual','Left','Reimbursable?']];
+  OFF_CATS.forEach(cat=>{
+    const tk=imprestByCat[cat]||0,a=catT[cat]||0,lf=tk-a;
+    catRows.push([cat,tk,a,tk?lf:'',OFF_REIMB[cat]?'Yes':'No']);
+  });
+  catRows.push(['TOTAL',imprest,totalSpent,imprest-totalSpent,'']);
+  catRows.push([]);
+  catRows.push(['TOTAL SPENT',totalReimb]);
+  catRows.push(['Less Imprest Received',imprest]);
+  catRows.push(['BALANCE',net]);
+  catRows.push([]);
+  const expRows=[['Date','Category','Description / Purpose','Amount','Currency','Receipt']];
+  [...expenses].sort((a,b)=>a.date.localeCompare(b.date)).forEach(e=>{
+    const rTag=e.receiptStatus==='attached'?'Attached':e.receiptStatus==='custom'?'Kept elsewhere: '+(e.receiptLocation||''):(e.receipt&&!e.receiptStatus?'Attached':'None');
+    expRows.push([fmt(e.date),e.cat,e.purpose,e.amount,e.currency||trip.currency,rTag]);
+  });
+  if(daAuto)expRows.push([fmt(trip.start||''),'DA','DA (Auto) — '+days+' days',daAuto,trip.currency,'—']);
+  expRows.push(['','','TOTAL',totalSpent,'','']);
+  const allRows=[...info,['CATEGORY BREAKDOWN'],...catRows,[],['EXPENSE DETAILS'],...expRows];
+  const ws=XLSX.utils.aoa_to_sheet(allRows);
+  ws['!cols']=[{wch:20},{wch:16},{wch:28},{wch:14},{wch:12},{wch:16}];
+  XLSX.utils.book_append_sheet(wb,ws,'Expense Summary');
+  XLSX.writeFile(wb,'ExpenseSummary-'+trip.dest.replace(/[^a-z0-9]/gi,'-')+'.xlsx');
+  showToast('Excel file downloaded ✅');
+}
+function exportSummaryWhatsapp(){
+  const trip=getOfficialTrip();if(!trip)return;
+  const d=computeSummaryData(trip);
+  const {imprest,totalSpent,totalReimb,net,days,catT,imprestByCat}=d;
+  let msg='*OFFICIAL TOUR EXPENSE SUMMARY*\n';
+  msg+=trip.dest+' ('+(trip.start?fmt(trip.start):'')+' - '+(trip.end?fmt(trip.end):'')+', '+days+' days)\n\n';
+  OFF_CATS.forEach(cat=>{
+    const a=catT[cat]||0;
+    if(a>0)msg+=OFF_ICONS[cat]+' '+cat+': '+d.fmtI(a)+'\n';
+  });
+  msg+='\nTotal Spent: '+d.fmtI(totalReimb);
+  msg+='\nImprest Received: '+d.fmtI(imprest);
+  msg+='\n*BALANCE: '+(net<0?'-':'')+d.fmtI(Math.abs(net))+'*'+(net>=0?' (company owes you)':' (return to company)');
+  const url='https://wa.me/?text='+encodeURIComponent(msg);
+  window.open(url,'_blank');
+  showToast('Opening WhatsApp ✅');
 }
 
 (function() {
