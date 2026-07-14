@@ -1301,8 +1301,9 @@
 <div class="overlay" id="overlay-sheet-imprest" onclick="closeSheet('sheet-imprest')"></div>
 <div class="sheet" id="sheet-imprest">
   <div class="sheet-handle"></div>
-  <div class="sheet-title">💰 Imprest Top-ups</div>
+  <div class="sheet-title">💰 Imprest Top-ups (Overseas)</div>
   <div class="sheet-body">
+    <div style="font-size:11px;color:var(--muted);margin-bottom:12px;">Imprest tracks advances for your <b>overseas</b> spend only. India expenses don't need an imprest — just log them directly as expenses and they'll show up in your India report.</div>
     <div style="margin-bottom:12px;"><label class="form-label">Received In</label><div id="imprest-currency-chips" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;"></div></div>
     <div class="form-row" style="margin-bottom:12px;">
       <div class="form-group" style="margin-bottom:0;"><label class="form-label">Persons</label><input class="form-input" id="imprest-persons" type="number" min="1"/></div>
@@ -4354,16 +4355,8 @@ function renderOfficial(){
   if(searchWrap)searchWrap.style.display='block';
   if(!trip.officialStatus)trip.officialStatus='draft';
   const expenses=state.officialExpenses?.[trip.id]||[];
-  const imprestByCat=getImprestByCat(trip);
-  const imprest=OFF_CATS.reduce((s,k)=>s+(imprestByCat[k]||0),0);
   const days=trip.start&&trip.end?Math.max(1,Math.round((new Date(trip.end+'T12:00')-new Date(trip.start+'T12:00'))/864e5)+1):0;
   const daAuto=trip.daRate&&days&&!expenses.find(e=>e.cat==='DA')?trip.daRate*days:0;
-  const catTotals={};OFF_CATS.forEach(k=>catTotals[k]=0);
-  expenses.forEach(e=>{if(catTotals[e.cat]!==undefined)catTotals[e.cat]+=e.amount;});
-  if(daAuto)catTotals['DA']=daAuto;
-  const totalSpent=OFF_CATS.reduce((s,k)=>s+catTotals[k],0);
-  const totalReimb=OFF_CATS.filter(k=>OFF_REIMB[k]).reduce((s,k)=>s+catTotals[k],0);
-  const pct=imprest?Math.round(totalSpent/imprest*100):0;
   const fmtI=v=>(CURRENCY_SYMBOLS[trip.currency]||'₹')+Math.round(v).toLocaleString('en-IN');
   // Per-location split (DA auto-calc counts as Overseas, since it's a per-diem for days on tour)
   const catTotalsOverseas={};OFF_CATS.forEach(k=>catTotalsOverseas[k]=0);
@@ -4376,9 +4369,7 @@ function renderOfficial(){
   const totalReimbOverseas=OFF_CATS.filter(k=>OFF_REIMB[k]).reduce((s,k)=>s+catTotalsOverseas[k],0);
   const totalReimbIndia=OFF_CATS.filter(k=>OFF_REIMB[k]).reduce((s,k)=>s+catTotalsIndia[k],0);
   const imprestOverseas=OFF_CATS.reduce((s,k)=>s+(getImprestByCat(trip,'overseas')[k]||0),0);
-  const imprestIndia=OFF_CATS.reduce((s,k)=>s+(getImprestByCat(trip,'india')[k]||0),0);
   const netOverseas=totalReimbOverseas-imprestOverseas;
-  const netIndia=totalReimbIndia-imprestIndia;
   const STATUS_MAP={draft:{label:'📝 Draft',bg:'var(--surface2)',color:'var(--mid)'},submitted:{label:'📤 Submitted',bg:'var(--sky-light)',color:'var(--sky-dark)'},settled:{label:'✅ Settled',bg:'var(--green-light)',color:'var(--green)'}};
   let html='<div style="display:flex;gap:6px;margin-bottom:12px;">'+Object.keys(STATUS_MAP).map(s=>'<div onclick="setOfficialStatus(\''+s+'\')" style="cursor:pointer;font-size:12px;font-weight:600;padding:7px 12px;border-radius:10px;background:'+(trip.officialStatus===s?STATUS_MAP[s].bg:'var(--surface2)')+';color:'+(trip.officialStatus===s?STATUS_MAP[s].color:'var(--muted)')+';border:1.5px solid '+(trip.officialStatus===s?STATUS_MAP[s].color:'transparent')+';">'+STATUS_MAP[s].label+'</div>').join('')+'</div>';
   html+='<div class="card" style="margin-bottom:14px;">';
@@ -4387,11 +4378,12 @@ function renderOfficial(){
   html+='<div style="font-size:11px;color:var(--muted);">'+(trip.purpose||'')+'</div>';
   html+='<div style="font-size:11px;color:var(--muted);">'+(trip.start?fmt(trip.start)+' → '+fmt(trip.end||''):'')+' · '+(trip.persons||1)+' person'+(trip.persons>1?'s':'')+' · '+days+' days</div></div>';
   html+='<button onclick="openSheet(\'sheet-imprest\')" style="font-size:11px;padding:7px 12px;background:var(--sky-light);color:var(--sky-dark);border:1px solid var(--sky);border-radius:10px;cursor:pointer;font-family:inherit;">💰 Imprest</button></div>';
-  if(imprest){
-    const isOver=totalSpent>imprest;
-    const overPct=isOver?Math.round((totalSpent-imprest)/imprest*100):0;
-    const overVal=isOver?totalSpent-imprest:0;
-    html+='<div style="margin-bottom:4px;"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px;"><span>Imprest: '+fmtI(imprest)+'</span><span>Spent: '+fmtI(totalSpent)+' ('+pct+'%)</span></div><div style="height:7px;background:var(--border);border-radius:4px;overflow:hidden;"><div style="height:100%;width:'+Math.min(100,pct)+'%;background:'+(isOver?'var(--red)':'var(--green)')+';border-radius:4px;"></div></div>';
+  if(imprestOverseas){
+    const pctO=Math.round(totalReimbOverseas/imprestOverseas*100);
+    const isOver=totalReimbOverseas>imprestOverseas;
+    const overPct=isOver?Math.round((totalReimbOverseas-imprestOverseas)/imprestOverseas*100):0;
+    const overVal=isOver?totalReimbOverseas-imprestOverseas:0;
+    html+='<div style="margin-bottom:4px;"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px;"><span>Overseas Imprest: '+fmtI(imprestOverseas)+'</span><span>Spent: '+fmtI(totalReimbOverseas)+' ('+pctO+'%)</span></div><div style="height:7px;background:var(--border);border-radius:4px;overflow:hidden;"><div style="height:100%;width:'+Math.min(100,pctO)+'%;background:'+(isOver?'var(--red)':'var(--green)')+';border-radius:4px;"></div></div>';
     if(isOver)html+='<div style="font-size:11px;font-weight:700;color:var(--red);margin-top:4px;text-align:right;">▲ '+overPct+'% over — '+fmtI(overVal)+' more than given</div>';
     html+='</div>';
   }
@@ -4403,15 +4395,22 @@ function renderOfficial(){
     '<div style="font-size:18px;font-weight:800;color:'+(owed?'var(--red)':'var(--green)')+';">'+fmtI(Math.abs(net))+'</div>'+
     '<div style="font-size:9px;color:var(--muted);margin-top:2px;">'+(owed?'Company owes you':'You owe company')+'</div></div>';
   };
-  html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">'+balanceCard('🌍 OVERSEAS BALANCE',netOverseas)+balanceCard('🇮🇳 INDIA BALANCE',netIndia)+'</div>';
+  const claimCard=(label,total)=>{
+    return '<div class="card" style="padding:12px;background:var(--sky-light);border:1.5px solid var(--sky);">'+
+    '<div style="font-size:10px;font-weight:700;color:var(--sky-dark);margin-bottom:4px;">'+label+'</div>'+
+    '<div style="font-size:18px;font-weight:800;color:var(--sky-dark);">'+fmtI(total)+'</div>'+
+    '<div style="font-size:9px;color:var(--muted);margin-top:2px;">To claim from company</div></div>';
+  };
+  html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">'+balanceCard('🌍 OVERSEAS BALANCE',netOverseas)+claimCard('🇮🇳 INDIA EXPENSES',totalReimbIndia)+'</div>';
   html+='<div class="card" style="margin-bottom:14px;">';
   html+='<div onclick="toggleOffBreakdown()" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;'+(offBreakdownExpanded?'margin-bottom:10px;':'')+'">';
-  html+='<div style="font-size:13px;font-weight:700;color:var(--sky-dark);">📊 Category Breakdown</div>';
-  html+='<span style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;">'+(offBreakdownExpanded?'':fmtI(totalSpent)+' total')+'<span style="font-size:15px;">'+(offBreakdownExpanded?'▲':'▼')+'</span></span>';
+  html+='<div style="font-size:13px;font-weight:700;color:var(--sky-dark);">📊 Category Breakdown <span style="font-weight:400;color:var(--muted);font-size:11px;">(Overseas only)</span></div>';
+  html+='<span style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;">'+(offBreakdownExpanded?'':fmtI(totalReimbOverseas)+' total')+'<span style="font-size:15px;">'+(offBreakdownExpanded?'▲':'▼')+'</span></span>';
   html+='</div>';
   if(offBreakdownExpanded){
+  const imprestByCatOverseas=getImprestByCat(trip,'overseas');
   OFF_CATS.forEach(cat=>{
-    const taken=imprestByCat[cat]||0,spent2=catTotals[cat]||0;
+    const taken=imprestByCatOverseas[cat]||0,spent2=catTotalsOverseas[cat]||0;
     const over=taken?spent2>taken:spent2>0;
     const pct2=taken?Math.min(100,Math.round(spent2/taken*100)):(spent2>0?100:0);
     const left=taken-spent2;
@@ -4428,7 +4427,8 @@ function renderOfficial(){
     html+='<div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden;margin-top:6px;"><div style="height:100%;width:'+pct2+'%;background:'+(over?'var(--red)':'var(--green)')+';border-radius:3px;"></div></div>';
     html+='</div>';
   });
-  html+='<div style="border-top:1.5px solid var(--border);padding-top:8px;display:flex;justify-content:space-between;font-size:13px;font-weight:700;"><span>TOTAL SPENT</span><span>'+fmtI(totalSpent)+'</span></div>';
+  html+='<div style="border-top:1.5px solid var(--border);padding-top:8px;display:flex;justify-content:space-between;font-size:13px;font-weight:700;"><span>TOTAL SPENT (Overseas)</span><span>'+fmtI(totalReimbOverseas)+'</span></div>';
+  if(totalReimbIndia>0)html+='<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:4px;">🇮🇳 India spend (see below): <b>'+fmtI(totalReimbIndia)+'</b></div>';
   }
   html+='</div>';
   html+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">';
@@ -4512,12 +4512,6 @@ function openBudgetAddExpense(){
 function editOfficialExp(tripId,expId){ openEditExpense(tripId,expId,'official'); }
 let imprestSelectedCurrency=null;
 let imprestExpandedCat=null;
-let imprestNewLoc={};
-function setImprestNewLoc(cat,loc,el){
-  imprestNewLoc[cat]=loc;
-  const wrap=el.parentElement;
-  if(wrap)wrap.querySelectorAll('.chip').forEach(c=>c.classList.toggle('active',c.dataset.loc===loc));
-}
 function openImprestSheet(){
   const trip=getOfficialTrip();if(!trip)return;
   const days=trip.start&&trip.end?Math.max(1,Math.round((new Date(trip.end+'T12:00')-new Date(trip.start+'T12:00'))/864e5)+1):1;
@@ -4552,7 +4546,6 @@ function renderImprestCatsList(){
   const trip=getOfficialTrip(),container=document.getElementById('imprest-cats-list');
   if(!trip||!container)return;
   const byCat=getImprestByCat(trip);
-  const tuLoc=imprestNewLoc;
   const fmtI=v=>(CURRENCY_SYMBOLS[trip.currency]||'₹')+Math.round(v).toLocaleString('en-IN');
   let grandTotal=0;
   container.innerHTML=OFF_CATS.map(cat=>{
@@ -4578,18 +4571,13 @@ function renderImprestCatsList(){
       html+='<input class="form-input" id="imprest-new-date-'+cat+'" type="date" value="'+new Date().toISOString().slice(0,10)+'" style="flex:1;font-size:12px;padding:8px;"/>';
       html+='<input class="form-input" id="imprest-new-note-'+cat+'" placeholder="Note (e.g. Mid-trip top-up)" style="flex:1.4;font-size:12px;padding:8px;"/>';
       html+='</div>';
-      html+='<div style="display:flex;gap:6px;margin-bottom:8px;">';
-      html+='<div class="chip'+((tuLoc[cat]||'overseas')==='overseas'?' active':'')+'" data-loc="overseas" onclick="setImprestNewLoc(\''+cat+'\',\'overseas\',this)" style="flex:1;text-align:center;font-size:11px;padding:7px;">🌍 Outside India</div>';
-      html+='<div class="chip'+((tuLoc[cat]||'overseas')==='india'?' active':'')+'" data-loc="india" onclick="setImprestNewLoc(\''+cat+'\',\'india\',this)" style="flex:1;text-align:center;font-size:11px;padding:7px;">🇮🇳 India</div>';
-      html+='</div>';
       html+='<button onclick="addImprestTopUp(\''+cat+'\')" style="width:100%;padding:10px;background:var(--sky);color:white;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:10px;">+ Add Top-up</button>';
       html+='<div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;">HISTORY ('+topUps.length+')</div>';
       if(!topUps.length)html+='<div style="font-size:12px;color:var(--muted);padding:6px 0;">No top-ups yet</div>';
       topUps.forEach(tu=>{
         const isForeign=(tu.currency||trip.currency)!==trip.currency;
-        const loc=tu.location||'overseas';
         html+='<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px;">';
-        html+='<div><b>'+fmtI(tu.amount)+'</b> <span style="font-size:9px;background:'+(loc==='india'?'#FFF3E0':'var(--sky-light)')+';color:'+(loc==='india'?'#E65100':'var(--sky-dark)')+';border-radius:4px;padding:1px 5px;font-weight:700;">'+(loc==='india'?'🇮🇳 India':'🌍 Overseas')+'</span>'+(isForeign?' <span style="color:var(--muted);font-size:10px;">('+fmtCurrency(tu.amountOriginal??tu.amount,tu.currency)+')</span>':'')+'<div style="color:var(--muted);font-size:10px;">'+fmt(tu.date)+(tu.note?' · '+tu.note:'')+'</div></div>';
+        html+='<div><b>'+fmtI(tu.amount)+'</b>'+(isForeign?' <span style="color:var(--muted);font-size:10px;">('+fmtCurrency(tu.amountOriginal??tu.amount,tu.currency)+')</span>':'')+'<div style="color:var(--muted);font-size:10px;">'+fmt(tu.date)+(tu.note?' · '+tu.note:'')+'</div></div>';
         html+='<span onclick="deleteImprestTopUp(\''+tu.id+'\')" style="color:var(--red);font-size:16px;cursor:pointer;padding:2px 6px;">×</span>';
         html+='</div>';
       });
@@ -4618,7 +4606,7 @@ function addImprestTopUp(cat){
   const rate=rates[cur+'_to_'+baseCur]||(cur===baseCur?1:1);
   trip.imprestCurrency=cur;
   if(!trip.imprestTopUps)trip.imprestTopUps=[];
-  trip.imprestTopUps.push({id:uid(),date:dateEl?.value||new Date().toISOString().slice(0,10),cat,amount:amtOrig*rate,amountOriginal:amtOrig,currency:cur,note:noteEl?.value.trim()||'',location:imprestNewLoc[cat]||'overseas'});
+  trip.imprestTopUps.push({id:uid(),date:dateEl?.value||new Date().toISOString().slice(0,10),cat,amount:amtOrig*rate,amountOriginal:amtOrig,currency:cur,note:noteEl?.value.trim()||'',location:'overseas'});
   save();
   renderImprestCatsList();
   renderOfficial();
@@ -4654,13 +4642,18 @@ function scopeLabel(scope){return scope==='india'?'India':scope==='overseas'?'Ov
 function buildScopeSectionHtml(trip,scope,H){
   const d=computeSummaryData(trip,scope);
   const {p,expenses,imprestByCat,imprest,days,daAuto,catT,totalSpent,totalReimb,net,receipts,fmtI}=d;
-  let html='<table><tr><th>Category</th><th style="text-align:right">Taken</th><th style="text-align:right">Actual</th><th style="text-align:right">Left</th><th>Reimb?</th></tr>';
-  OFF_CATS.forEach(cat=>{
-    const tk=imprestByCat[cat]||0,a=catT[cat]||0,lf=tk-a;
-    html+='<tr><td>'+OFF_ICONS[cat]+' '+cat+'</td><td style="text-align:right">'+fmtI(tk)+'</td><td style="text-align:right">'+fmtI(a)+'</td><td style="text-align:right;color:'+(lf<0?'#C62828':'#2E7D32')+'">'+(tk?fmtI(lf):'—')+'</td><td style="text-align:center">'+(OFF_REIMB[cat]?'✅':'❌')+'</td></tr>';
-  });
-  html+='<tr class="tr"><td><b>TOTAL</b></td><td style="text-align:right"><b>'+fmtI(imprest)+'</b></td><td style="text-align:right"><b>'+fmtI(totalSpent)+'</b></td><td style="text-align:right"><b>'+fmtI(imprest-totalSpent)+'</b></td><td></td></tr></table>';
-  html+='<div class="settle" style="background:'+(net>=0?'#E8F5E9':'#FFEBEE')+';"><b>TOTAL SPENT:</b> '+fmtI(totalReimb)+'<br><b>Less Imprest Received:</b> '+fmtI(imprest)+'<br><b style="font-size:13pt;color:'+(net>=0?'#2E7D32':'#C62828')+'">BALANCE: '+(net<0?'-':'')+fmtI(Math.abs(net))+'</b></div>';
+  let html='';
+  if(scope==='india'){
+    html+='<div class="settle" style="background:#E8F5E9;"><b style="font-size:13pt;color:#2E7D32;">TOTAL TO CLAIM: '+fmtI(totalReimb)+'</b></div>';
+  } else {
+    html+='<table><tr><th>Category</th><th style="text-align:right">Taken</th><th style="text-align:right">Actual</th><th style="text-align:right">Left</th><th>Reimb?</th></tr>';
+    OFF_CATS.forEach(cat=>{
+      const tk=imprestByCat[cat]||0,a=catT[cat]||0,lf=tk-a;
+      html+='<tr><td>'+OFF_ICONS[cat]+' '+cat+'</td><td style="text-align:right">'+fmtI(tk)+'</td><td style="text-align:right">'+fmtI(a)+'</td><td style="text-align:right;color:'+(lf<0?'#C62828':'#2E7D32')+'">'+(tk?fmtI(lf):'—')+'</td><td style="text-align:center">'+(OFF_REIMB[cat]?'✅':'❌')+'</td></tr>';
+    });
+    html+='<tr class="tr"><td><b>TOTAL</b></td><td style="text-align:right"><b>'+fmtI(imprest)+'</b></td><td style="text-align:right"><b>'+fmtI(totalSpent)+'</b></td><td style="text-align:right"><b>'+fmtI(imprest-totalSpent)+'</b></td><td></td></tr></table>';
+    html+='<div class="settle" style="background:'+(net>=0?'#E8F5E9':'#FFEBEE')+';"><b>TOTAL SPENT:</b> '+fmtI(totalReimb)+'<br><b>Less Imprest Received:</b> '+fmtI(imprest)+'<br><b style="font-size:13pt;color:'+(net>=0?'#2E7D32':'#C62828')+'">BALANCE: '+(net<0?'-':'')+fmtI(Math.abs(net))+'</b></div>';
+  }
   html+='<br><b style="color:'+H+'">EXPENSE DETAILS'+(receipts||expenses.length?' ('+receipts+'/'+expenses.length+' with receipts)':'')+'</b><br><br>';
   html+='<table><tr><th>Date</th><th>Category</th><th>Description / Purpose</th><th style="text-align:right">Amount</th><th>Receipt</th></tr>';
   [...expenses].sort((a,b)=>a.date.localeCompare(b.date)).forEach(e=>{const rTag=e.receiptStatus==='attached'?'🧾 Attached':e.receiptStatus==='custom'?'📍 '+(e.receiptLocation||'Kept elsewhere'):(e.receipt&&!e.receiptStatus?'🧾 Attached':'❌ None');html+='<tr><td>'+fmt(e.date)+'</td><td>'+OFF_ICONS[e.cat]+' '+e.cat+'</td><td>'+e.purpose+'</td><td style="text-align:right">'+fmtI(e.amount)+'</td><td style="text-align:center;font-size:9pt;">'+rTag+'</td></tr>';});
@@ -4718,17 +4711,29 @@ function buildXlsxRows(trip,scope){
     ['Days',days,'Receipts',receipts+'/'+expenses.length],
     []
   ];
-  const catRows=[['Category','Taken','Actual','Left','Reimbursable?']];
-  OFF_CATS.forEach(cat=>{
-    const tk=imprestByCat[cat]||0,a=catT[cat]||0,lf=tk-a;
-    catRows.push([cat,tk,a,tk?lf:'',OFF_REIMB[cat]?'Yes':'No']);
-  });
-  catRows.push(['TOTAL',imprest,totalSpent,imprest-totalSpent,'']);
-  catRows.push([]);
-  catRows.push(['TOTAL SPENT',totalReimb]);
-  catRows.push(['Less Imprest Received',imprest]);
-  catRows.push(['BALANCE',net]);
-  catRows.push([]);
+  let catRows;
+  if(scope==='india'){
+    catRows=[['Category','Actual','Reimbursable?']];
+    OFF_CATS.forEach(cat=>{
+      const a=catT[cat]||0;
+      if(a>0)catRows.push([cat,a,OFF_REIMB[cat]?'Yes':'No']);
+    });
+    catRows.push([]);
+    catRows.push(['TOTAL TO CLAIM',totalReimb]);
+    catRows.push([]);
+  } else {
+    catRows=[['Category','Taken','Actual','Left','Reimbursable?']];
+    OFF_CATS.forEach(cat=>{
+      const tk=imprestByCat[cat]||0,a=catT[cat]||0,lf=tk-a;
+      catRows.push([cat,tk,a,tk?lf:'',OFF_REIMB[cat]?'Yes':'No']);
+    });
+    catRows.push(['TOTAL',imprest,totalSpent,imprest-totalSpent,'']);
+    catRows.push([]);
+    catRows.push(['TOTAL SPENT',totalReimb]);
+    catRows.push(['Less Imprest Received',imprest]);
+    catRows.push(['BALANCE',net]);
+    catRows.push([]);
+  }
   const expRows=[['Date','Category','Description / Purpose','Amount','Currency','Receipt']];
   [...expenses].sort((a,b)=>a.date.localeCompare(b.date)).forEach(e=>{
     const rTag=e.receiptStatus==='attached'?'Attached':e.receiptStatus==='custom'?'Kept elsewhere: '+(e.receiptLocation||''):(e.receipt&&!e.receiptStatus?'Attached':'None');
@@ -4763,9 +4768,13 @@ function buildWhatsappSection(trip,scope){
     const a=catT[cat]||0;
     if(a>0)msg+=OFF_ICONS[cat]+' '+cat+': '+d.fmtI(a)+'\n';
   });
-  msg+='\nTotal Spent: '+d.fmtI(totalReimb);
-  msg+='\nImprest Received: '+d.fmtI(imprest);
-  msg+='\n*BALANCE: '+(net<0?'-':'')+d.fmtI(Math.abs(net))+'*'+(net>=0?' (company owes you)':' (return to company)');
+  if(scope==='india'){
+    msg+='\n*TOTAL TO CLAIM: '+d.fmtI(totalReimb)+'*';
+  } else {
+    msg+='\nTotal Spent: '+d.fmtI(totalReimb);
+    msg+='\nImprest Received: '+d.fmtI(imprest);
+    msg+='\n*BALANCE: '+(net<0?'-':'')+d.fmtI(Math.abs(net))+'*'+(net>=0?' (company owes you)':' (return to company)');
+  }
   return msg;
 }
 function exportSummaryWhatsapp(){
