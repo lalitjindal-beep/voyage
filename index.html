@@ -4693,10 +4693,23 @@ function exportSummaryHtml(){
 function exportSummaryPdf(){
   const trip=getOfficialTrip();if(!trip)return;
   const html=buildSummaryHtmlDoc(trip,offExportScope);
-  const w=window.open('','_blank');
-  if(!w){showToast('Please allow popups to print/save as PDF');return;}
-  w.document.open();w.document.write(html);w.document.close();
-  setTimeout(()=>{w.focus();w.print();},400);
+  let iframe=document.getElementById('pdf-print-iframe');
+  if(!iframe){
+    iframe=document.createElement('iframe');
+    iframe.id='pdf-print-iframe';
+    iframe.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
+    document.body.appendChild(iframe);
+  }
+  const doc=iframe.contentWindow.document;
+  doc.open();doc.write(html);doc.close();
+  setTimeout(()=>{
+    try{
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+    }catch(e){
+      showToast('Could not open print dialog — try HTML export instead');
+    }
+  },400);
   showToast('Opening print dialog — choose "Save as PDF" ✅');
 }
 function buildXlsxRows(trip,scope){
