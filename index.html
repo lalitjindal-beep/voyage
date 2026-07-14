@@ -774,6 +774,13 @@
 <input class="form-input" id="inp-exp-date" type="date" />
 </div>
 </div>
+<div id="exp-location-row" style="display:none;margin-bottom:10px;">
+<label class="form-label">Where were these spent?</label>
+<div style="display:flex;gap:8px;margin-top:4px;">
+<div class="chip active" id="exp-loc-overseas" onclick="selectExpLocation('overseas')" style="flex:1;text-align:center;padding:9px;">🌍 Outside India</div>
+<div class="chip" id="exp-loc-india" onclick="selectExpLocation('india')" style="flex:1;text-align:center;padding:9px;">🇮🇳 India</div>
+</div>
+</div>
 <div>
 <label class="form-label">Paid In</label>
 <div id="exp-currency-chips" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;"></div>
@@ -830,6 +837,14 @@
 </div>
 <div id="edit-card-name-row" style="display:none;margin-top:-8px;margin-bottom:12px;">
 <input class="form-input" id="edit-exp-card-name" placeholder="Card name e.g. Axis Magnus"/>
+</div>
+<div id="edit-exp-location-row" style="display:none;margin-bottom:14px;">
+<label class="form-label">Where was this spent?</label>
+<div style="display:flex;gap:8px;margin-top:4px;">
+<div class="chip" id="edit-exp-loc-overseas" onclick="selectEditExpLocation('overseas')" style="flex:1;text-align:center;padding:9px;">🌍 Outside India</div>
+<div class="chip" id="edit-exp-loc-india" onclick="selectEditExpLocation('india')" style="flex:1;text-align:center;padding:9px;">🇮🇳 India</div>
+</div>
+<input type="hidden" id="edit-exp-location" value="overseas"/>
 </div>
 <div id="edit-exp-receipt-section" style="display:none;margin-bottom:14px;">
 <label class="form-label">Receipt</label>
@@ -1395,10 +1410,13 @@ function migrateImprestToTopUps() {
     });
   });
 }
-function getImprestByCat(trip) {
+function getImprestByCat(trip, location) {
   const result = {};
   OFF_CATS.forEach(c => result[c] = 0);
-  (trip.imprestTopUps || []).forEach(tu => { if (result[tu.cat] !== undefined) result[tu.cat] += tu.amount; });
+  (trip.imprestTopUps || []).forEach(tu => {
+    if (location && (tu.location||'overseas') !== location) return;
+    if (result[tu.cat] !== undefined) result[tu.cat] += tu.amount;
+  });
   return result;
 }
 function migrateOfficialCategories() {
@@ -2320,7 +2338,7 @@ function saveMultiExpense() {
       if (expenseCtx === 'official') {
         const receiptStatus = row.dataset.receiptStatus || 'none';
         const receiptLocation = receiptStatus === 'custom' ? (row.querySelector('.row-receipt-location')?.value.trim() || '') : '';
-        state.officialExpenses[trip.id].push({ id: uid(), purpose: name, amount: amount*rate, amountOriginal: amount, cat, date, currency: expCur, payMethod, cardName, receipt: receiptStatus !== 'none', receiptStatus, receiptLocation });
+        state.officialExpenses[trip.id].push({ id: uid(), purpose: name, amount: amount*rate, amountOriginal: amount, cat, date, currency: expCur, payMethod, cardName, receipt: receiptStatus !== 'none', receiptStatus, receiptLocation, location: expSelectedLocation });
       } else {
         state.expenses[trip.id].push({ id: uid(), name, amount, amountBase: amount*rate, cat, date, currency: expCur, payMethod, cardName });
       }
@@ -2697,6 +2715,12 @@ function resetExpenseForm() {
   if (cardInp) cardInp.value = '';
   const titleEl = document.getElementById('expense-sheet-title');
   if (titleEl) titleEl.textContent = expenseCtx==='official' ? 'Add Official Expense' : 'Add Expenses';
+  const locRow = document.getElementById('exp-location-row');
+  if (locRow) locRow.style.display = expenseCtx==='official' ? 'block' : 'none';
+  expSelectedLocation = 'overseas';
+  const locO = document.getElementById('exp-loc-overseas'), locI = document.getElementById('exp-loc-india');
+  if (locO) locO.classList.add('active');
+  if (locI) locI.classList.remove('active');
   setTimeout(() => addExpenseRow(), 50);
 }
 const API_KEY_STORAGE = 'voyage_openrouter_key';
@@ -2893,6 +2917,11 @@ function openEditExpense(tripId, expId, ctx) {
   if (cnEl) cnEl.value = exp.cardName || '';
   const cnRow = document.getElementById('edit-card-name-row');
   if (cnRow) cnRow.style.display = (exp.payMethod === '💳 Credit Card') ? 'block' : 'none';
+  const locRow = document.getElementById('edit-exp-location-row');
+  if (locRow) {
+    locRow.style.display = expenseCtx === 'official' ? 'block' : 'none';
+    if (expenseCtx === 'official') selectEditExpLocation(exp.location || 'overseas');
+  }
   const receiptSection = document.getElementById('edit-exp-receipt-section');
   if (receiptSection) {
     receiptSection.style.display = expenseCtx === 'official' ? 'block' : 'none';
@@ -2912,6 +2941,11 @@ function renderEditReceiptChips(status, location) {
 function selectEditReceiptStatus(val) {
   const locInput = document.getElementById('edit-exp-receipt-location');
   renderEditReceiptChips(val, locInput ? locInput.value : '');
+}
+function selectEditExpLocation(loc) {
+  document.getElementById('edit-exp-location').value = loc;
+  document.getElementById('edit-exp-loc-overseas')?.classList.toggle('active', loc==='overseas');
+  document.getElementById('edit-exp-loc-india')?.classList.toggle('active', loc==='india');
 }
 function renderEditExpCurrencyChips(tripId, selectedCur) {
   const container = document.getElementById('edit-exp-currency-chips');
@@ -2948,6 +2982,7 @@ function saveEditExpense() {
       exp.cat = document.getElementById('edit-exp-cat').value;
       exp.date = document.getElementById('edit-exp-date').value;
       exp.currency = expCur; exp.payMethod = pm; exp.cardName = cardName;
+      exp.location = document.getElementById('edit-exp-location')?.value || 'overseas';
       const receiptStatus = document.getElementById('edit-exp-receipt-status')?.value || 'none';
       exp.receiptStatus = receiptStatus;
       exp.receipt = receiptStatus !== 'none';
@@ -4283,7 +4318,11 @@ function jumpToGlobalResult(tripId,activeKey,screen){
   switchTab(screen);
 }
 let offExpFilter='All';
+let offLocFilter='All';
 let offExpPageSize=25;
+let offExportScope='overseas';
+function setOffExportScope(scope){offExportScope=scope;renderOfficial();}
+function setOffLocFilter(loc){offLocFilter=loc;offExpFilter='All';offExpPageSize=25;renderOfficial();}
 let offBreakdownExpanded=true;
 function setOfficialStatus(status){
   const trip=getOfficialTrip();if(!trip)return;
@@ -4324,9 +4363,22 @@ function renderOfficial(){
   if(daAuto)catTotals['DA']=daAuto;
   const totalSpent=OFF_CATS.reduce((s,k)=>s+catTotals[k],0);
   const totalReimb=OFF_CATS.filter(k=>OFF_REIMB[k]).reduce((s,k)=>s+catTotals[k],0);
-  const netPayable=totalReimb-imprest;
   const pct=imprest?Math.round(totalSpent/imprest*100):0;
   const fmtI=v=>(CURRENCY_SYMBOLS[trip.currency]||'₹')+Math.round(v).toLocaleString('en-IN');
+  // Per-location split (DA auto-calc counts as Overseas, since it's a per-diem for days on tour)
+  const catTotalsOverseas={};OFF_CATS.forEach(k=>catTotalsOverseas[k]=0);
+  const catTotalsIndia={};OFF_CATS.forEach(k=>catTotalsIndia[k]=0);
+  expenses.forEach(e=>{
+    const bucket=(e.location||'overseas')==='india'?catTotalsIndia:catTotalsOverseas;
+    if(bucket[e.cat]!==undefined)bucket[e.cat]+=e.amount;
+  });
+  if(daAuto)catTotalsOverseas['DA']=daAuto;
+  const totalReimbOverseas=OFF_CATS.filter(k=>OFF_REIMB[k]).reduce((s,k)=>s+catTotalsOverseas[k],0);
+  const totalReimbIndia=OFF_CATS.filter(k=>OFF_REIMB[k]).reduce((s,k)=>s+catTotalsIndia[k],0);
+  const imprestOverseas=OFF_CATS.reduce((s,k)=>s+(getImprestByCat(trip,'overseas')[k]||0),0);
+  const imprestIndia=OFF_CATS.reduce((s,k)=>s+(getImprestByCat(trip,'india')[k]||0),0);
+  const netOverseas=totalReimbOverseas-imprestOverseas;
+  const netIndia=totalReimbIndia-imprestIndia;
   const STATUS_MAP={draft:{label:'📝 Draft',bg:'var(--surface2)',color:'var(--mid)'},submitted:{label:'📤 Submitted',bg:'var(--sky-light)',color:'var(--sky-dark)'},settled:{label:'✅ Settled',bg:'var(--green-light)',color:'var(--green)'}};
   let html='<div style="display:flex;gap:6px;margin-bottom:12px;">'+Object.keys(STATUS_MAP).map(s=>'<div onclick="setOfficialStatus(\''+s+'\')" style="cursor:pointer;font-size:12px;font-weight:600;padding:7px 12px;border-radius:10px;background:'+(trip.officialStatus===s?STATUS_MAP[s].bg:'var(--surface2)')+';color:'+(trip.officialStatus===s?STATUS_MAP[s].color:'var(--muted)')+';border:1.5px solid '+(trip.officialStatus===s?STATUS_MAP[s].color:'transparent')+';">'+STATUS_MAP[s].label+'</div>').join('')+'</div>';
   html+='<div class="card" style="margin-bottom:14px;">';
@@ -4344,9 +4396,14 @@ function renderOfficial(){
     html+='</div>';
   }
   html+='</div>';
-  html+='<div class="card" style="margin-bottom:14px;background:'+(netPayable>=0?'var(--red-light)':'var(--green-light)')+';border:1.5px solid '+(netPayable>=0?'var(--red)':'var(--green)')+';padding:14px;">';
-  html+='<div style="font-size:11px;font-weight:700;color:'+(netPayable>=0?'var(--red)':'var(--green)')+';margin-bottom:6px;">'+(netPayable>=0?'⚠️ YOU SPENT MORE THAN GIVEN':'✅ WITHIN LIMIT')+'</div>';
-  html+='<div style="font-size:26px;font-weight:800;color:'+(netPayable>=0?'var(--red)':'var(--green)')+';">'+fmtI(Math.abs(netPayable))+'</div></div>';
+  const balanceCard=(label,net)=>{
+    const owed=net>=0;
+    return '<div class="card" style="padding:12px;background:'+(owed?'var(--red-light)':'var(--green-light)')+';border:1.5px solid '+(owed?'var(--red)':'var(--green)')+';">'+
+    '<div style="font-size:10px;font-weight:700;color:'+(owed?'var(--red)':'var(--green)')+';margin-bottom:4px;">'+label+'</div>'+
+    '<div style="font-size:18px;font-weight:800;color:'+(owed?'var(--red)':'var(--green)')+';">'+fmtI(Math.abs(net))+'</div>'+
+    '<div style="font-size:9px;color:var(--muted);margin-top:2px;">'+(owed?'Company owes you':'You owe company')+'</div></div>';
+  };
+  html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">'+balanceCard('🌍 OVERSEAS BALANCE',netOverseas)+balanceCard('🇮🇳 INDIA BALANCE',netIndia)+'</div>';
   html+='<div class="card" style="margin-bottom:14px;">';
   html+='<div onclick="toggleOffBreakdown()" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;'+(offBreakdownExpanded?'margin-bottom:10px;':'')+'">';
   html+='<div style="font-size:13px;font-weight:700;color:var(--sky-dark);">📊 Category Breakdown</div>';
@@ -4377,16 +4434,25 @@ function renderOfficial(){
   html+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">';
   html+='<div style="font-size:13px;font-weight:700;">📋 Expenses ('+expenses.length+')</div>';
   html+='<button onclick="openOfficialAddExpense()" style="background:var(--sky);color:white;border:none;border-radius:10px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">+ Add</button></div>';
+  // Location filter chips
+  const nOverseas=expenses.filter(e=>(e.location||'overseas')==='overseas').length;
+  const nIndia=expenses.filter(e=>(e.location||'overseas')==='india').length;
+  html+='<div style="display:flex;gap:6px;margin-bottom:8px;">';
+  html+='<div class="chip'+(offLocFilter==='All'?' active':'')+'" onclick="setOffLocFilter(\'All\')" style="flex:1;text-align:center;font-size:11px;padding:7px;">All ('+expenses.length+')</div>';
+  html+='<div class="chip'+(offLocFilter==='overseas'?' active':'')+'" onclick="setOffLocFilter(\'overseas\')" style="flex:1;text-align:center;font-size:11px;padding:7px;">🌍 Overseas ('+nOverseas+')</div>';
+  html+='<div class="chip'+(offLocFilter==='india'?' active':'')+'" onclick="setOffLocFilter(\'india\')" style="flex:1;text-align:center;font-size:11px;padding:7px;">🇮🇳 India ('+nIndia+')</div>';
+  html+='</div>';
+  const locScoped=offLocFilter==='All'?expenses:expenses.filter(e=>(e.location||'overseas')===offLocFilter);
   // Category filter chips
   html+='<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:6px;">';
-  html+='<div class="chip'+(offExpFilter==='All'?' active':'')+'" onclick="setOffExpFilter(\'All\')" style="flex-shrink:0;font-size:11px;padding:6px 11px;">All ('+expenses.length+')</div>';
+  html+='<div class="chip'+(offExpFilter==='All'?' active':'')+'" onclick="setOffExpFilter(\'All\')" style="flex-shrink:0;font-size:11px;padding:6px 11px;">All ('+locScoped.length+')</div>';
   OFF_CATS.forEach(cat=>{
-    const n=expenses.filter(e=>e.cat===cat).length;
+    const n=locScoped.filter(e=>e.cat===cat).length;
     if(!n)return;
     html+='<div class="chip'+(offExpFilter===cat?' active':'')+'" onclick="setOffExpFilter(\''+cat+'\')" style="flex-shrink:0;font-size:11px;padding:6px 11px;">'+OFF_ICONS[cat]+' '+cat+' ('+n+')</div>';
   });
   html+='</div>';
-  const filtered=offExpFilter==='All'?expenses:expenses.filter(e=>e.cat===offExpFilter);
+  const filtered=offExpFilter==='All'?locScoped:locScoped.filter(e=>e.cat===offExpFilter);
   const q=(document.getElementById('off-exp-search')?.value||'').trim().toLowerCase();
   const searched=q?filtered.filter(e=>(e.purpose||'').toLowerCase().includes(q)):filtered;
   function offHl(text){
@@ -4401,13 +4467,19 @@ function renderOfficial(){
     const isForeign=eCur!==(trip.currency||'INR');
     const origLine=isForeign?'<div style="font-size:10px;color:var(--muted);">'+fmtCurrency(e.amountOriginal??e.amount,eCur)+'</div>':'';
     const curBadge=isForeign?' <span style="font-size:9px;background:var(--sky-light);color:var(--sky-dark);border-radius:4px;padding:1px 5px;font-weight:700;">'+eCur+'</span>':'';
+    const locBadge=(e.location||'overseas')==='india'?' <span style="font-size:9px;background:#FFF3E0;color:#E65100;border-radius:4px;padding:1px 5px;font-weight:700;">🇮🇳 India</span>':'';
     const receiptTag=e.receiptStatus==='attached'?' · 🧾':(e.receiptStatus==='custom'?' · 📍'+(e.receiptLocation?' '+e.receiptLocation:''):(e.receipt&&!e.receiptStatus?' · 🧾':''));
-    return '<div class="card" style="display:flex;gap:10px;align-items:center;padding:10px 12px;margin-bottom:8px;"><span style="font-size:20px;">'+OFF_ICONS[e.cat]+'</span><div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:600;">'+offHl(e.purpose)+curBadge+'</div><div style="font-size:11px;color:var(--muted);">'+fmt(e.date)+' · '+e.cat+receiptTag+(e.payMethod?' · '+e.payMethod:'')+'</div></div><div style="text-align:right;"><div style="font-size:14px;font-weight:700;">'+fmtI(e.amount)+'</div>'+origLine+'<span onclick="editOfficialExp(\''+trip.id+'\',\''+e.id+'\')" style="font-size:16px;cursor:pointer;color:var(--sky);">✏️</span></div></div>';
+    return '<div class="card" style="display:flex;gap:10px;align-items:center;padding:10px 12px;margin-bottom:8px;"><span style="font-size:20px;">'+OFF_ICONS[e.cat]+'</span><div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:600;">'+offHl(e.purpose)+curBadge+locBadge+'</div><div style="font-size:11px;color:var(--muted);">'+fmt(e.date)+' · '+e.cat+receiptTag+(e.payMethod?' · '+e.payMethod:'')+'</div></div><div style="text-align:right;"><div style="font-size:14px;font-weight:700;">'+fmtI(e.amount)+'</div>'+origLine+'<span onclick="editOfficialExp(\''+trip.id+'\',\''+e.id+'\')" style="font-size:16px;cursor:pointer;color:var(--sky);">✏️</span></div></div>';
   }).join('');
   if(!sorted.length)html+='<div style="font-size:12px;color:var(--muted);padding:12px 0;text-align:center;">'+(q?'No expenses match "<b>'+q+'</b>"':'No expenses'+(offExpFilter!=='All'?' in this category':'')+' yet')+'</div>';
   if(sorted.length>visible.length)html+='<button onclick="offExpPageSize+=25;renderOfficial();" style="width:100%;padding:11px;border:1.5px dashed var(--border);border-radius:12px;background:none;color:var(--sky);font-size:13px;font-weight:600;cursor:pointer;margin-bottom:8px;font-family:inherit;">Show '+Math.min(25,sorted.length-visible.length)+' more ('+(sorted.length-visible.length)+' left)</button>';
-  if(daAuto)html+='<div class="card" style="padding:10px 12px;margin-bottom:8px;background:var(--sky-light);"><span style="font-size:13px;font-weight:600;">💰 DA (auto) — '+days+' days × '+(CURRENCY_SYMBOLS[trip.currency]||'₹')+trip.daRate+'</span><div style="font-size:11px;color:var(--muted);">Calculated automatically</div><div style="font-size:14px;font-weight:700;text-align:right;">'+fmtI(daAuto)+'</div></div>';
+  if(daAuto)html+='<div class="card" style="padding:10px 12px;margin-bottom:8px;background:var(--sky-light);"><span style="font-size:13px;font-weight:600;">💰 DA (auto) — '+days+' days × '+(CURRENCY_SYMBOLS[trip.currency]||'₹')+trip.daRate+'</span><div style="font-size:11px;color:var(--muted);">Calculated automatically · counted as Overseas</div><div style="font-size:14px;font-weight:700;text-align:right;">'+fmtI(daAuto)+'</div></div>';
   html+='<div style="font-size:12px;font-weight:700;color:var(--muted);margin:10px 0 8px;">📊 EXPORT SUMMARY</div>';
+  html+='<div style="display:flex;gap:6px;margin-bottom:10px;">';
+  html+='<div class="chip'+(offExportScope==='overseas'?' active':'')+'" onclick="setOffExportScope(\'overseas\')" style="flex:1;text-align:center;font-size:11px;padding:8px;">🌍 Overseas</div>';
+  html+='<div class="chip'+(offExportScope==='india'?' active':'')+'" onclick="setOffExportScope(\'india\')" style="flex:1;text-align:center;font-size:11px;padding:8px;">🇮🇳 India</div>';
+  html+='<div class="chip'+(offExportScope==='both'?' active':'')+'" onclick="setOffExportScope(\'both\')" style="flex:1;text-align:center;font-size:11px;padding:8px;">📋 Both</div>';
+  html+='</div>';
   html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">';
   html+='<button onclick="exportSummaryXlsx()" style="padding:12px 8px;background:#E8F5E9;color:#2E7D32;border:1.5px solid #4CAF50;border-radius:12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">📗 Excel (.xlsx)</button>';
   html+='<button onclick="exportSummaryHtml()" style="padding:12px 8px;background:var(--sky-light);color:var(--sky-dark);border:1.5px solid var(--sky);border-radius:12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">🌐 HTML</button>';
@@ -4417,6 +4489,13 @@ function renderOfficial(){
   container.innerHTML=html;
 }
 let expenseCtx='budget';
+let expSelectedLocation='overseas';
+function selectExpLocation(loc){
+  expSelectedLocation=loc;
+  const locO=document.getElementById('exp-loc-overseas'),locI=document.getElementById('exp-loc-india');
+  if(locO)locO.classList.toggle('active',loc==='overseas');
+  if(locI)locI.classList.toggle('active',loc==='india');
+}
 function expCtxTrip(){ return expenseCtx==='official' ? getOfficialTrip() : getActiveTrip('bg'); }
 function expCtxCats(){ return expenseCtx==='official' ? OFF_CATS : getAllExpCats(); }
 function expCtxCatLabel(c){ return expenseCtx==='official' ? (OFF_ICONS[c]||'')+' '+c : c; }
@@ -4433,6 +4512,12 @@ function openBudgetAddExpense(){
 function editOfficialExp(tripId,expId){ openEditExpense(tripId,expId,'official'); }
 let imprestSelectedCurrency=null;
 let imprestExpandedCat=null;
+let imprestNewLoc={};
+function setImprestNewLoc(cat,loc,el){
+  imprestNewLoc[cat]=loc;
+  const wrap=el.parentElement;
+  if(wrap)wrap.querySelectorAll('.chip').forEach(c=>c.classList.toggle('active',c.dataset.loc===loc));
+}
 function openImprestSheet(){
   const trip=getOfficialTrip();if(!trip)return;
   const days=trip.start&&trip.end?Math.max(1,Math.round((new Date(trip.end+'T12:00')-new Date(trip.start+'T12:00'))/864e5)+1):1;
@@ -4467,6 +4552,7 @@ function renderImprestCatsList(){
   const trip=getOfficialTrip(),container=document.getElementById('imprest-cats-list');
   if(!trip||!container)return;
   const byCat=getImprestByCat(trip);
+  const tuLoc=imprestNewLoc;
   const fmtI=v=>(CURRENCY_SYMBOLS[trip.currency]||'₹')+Math.round(v).toLocaleString('en-IN');
   let grandTotal=0;
   container.innerHTML=OFF_CATS.map(cat=>{
@@ -4492,13 +4578,18 @@ function renderImprestCatsList(){
       html+='<input class="form-input" id="imprest-new-date-'+cat+'" type="date" value="'+new Date().toISOString().slice(0,10)+'" style="flex:1;font-size:12px;padding:8px;"/>';
       html+='<input class="form-input" id="imprest-new-note-'+cat+'" placeholder="Note (e.g. Mid-trip top-up)" style="flex:1.4;font-size:12px;padding:8px;"/>';
       html+='</div>';
+      html+='<div style="display:flex;gap:6px;margin-bottom:8px;">';
+      html+='<div class="chip'+((tuLoc[cat]||'overseas')==='overseas'?' active':'')+'" data-loc="overseas" onclick="setImprestNewLoc(\''+cat+'\',\'overseas\',this)" style="flex:1;text-align:center;font-size:11px;padding:7px;">🌍 Outside India</div>';
+      html+='<div class="chip'+((tuLoc[cat]||'overseas')==='india'?' active':'')+'" data-loc="india" onclick="setImprestNewLoc(\''+cat+'\',\'india\',this)" style="flex:1;text-align:center;font-size:11px;padding:7px;">🇮🇳 India</div>';
+      html+='</div>';
       html+='<button onclick="addImprestTopUp(\''+cat+'\')" style="width:100%;padding:10px;background:var(--sky);color:white;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:10px;">+ Add Top-up</button>';
       html+='<div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;">HISTORY ('+topUps.length+')</div>';
       if(!topUps.length)html+='<div style="font-size:12px;color:var(--muted);padding:6px 0;">No top-ups yet</div>';
       topUps.forEach(tu=>{
         const isForeign=(tu.currency||trip.currency)!==trip.currency;
+        const loc=tu.location||'overseas';
         html+='<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px;">';
-        html+='<div><b>'+fmtI(tu.amount)+'</b>'+(isForeign?' <span style="color:var(--muted);font-size:10px;">('+fmtCurrency(tu.amountOriginal??tu.amount,tu.currency)+')</span>':'')+'<div style="color:var(--muted);font-size:10px;">'+fmt(tu.date)+(tu.note?' · '+tu.note:'')+'</div></div>';
+        html+='<div><b>'+fmtI(tu.amount)+'</b> <span style="font-size:9px;background:'+(loc==='india'?'#FFF3E0':'var(--sky-light)')+';color:'+(loc==='india'?'#E65100':'var(--sky-dark)')+';border-radius:4px;padding:1px 5px;font-weight:700;">'+(loc==='india'?'🇮🇳 India':'🌍 Overseas')+'</span>'+(isForeign?' <span style="color:var(--muted);font-size:10px;">('+fmtCurrency(tu.amountOriginal??tu.amount,tu.currency)+')</span>':'')+'<div style="color:var(--muted);font-size:10px;">'+fmt(tu.date)+(tu.note?' · '+tu.note:'')+'</div></div>';
         html+='<span onclick="deleteImprestTopUp(\''+tu.id+'\')" style="color:var(--red);font-size:16px;cursor:pointer;padding:2px 6px;">×</span>';
         html+='</div>';
       });
@@ -4527,7 +4618,7 @@ function addImprestTopUp(cat){
   const rate=rates[cur+'_to_'+baseCur]||(cur===baseCur?1:1);
   trip.imprestCurrency=cur;
   if(!trip.imprestTopUps)trip.imprestTopUps=[];
-  trip.imprestTopUps.push({id:uid(),date:dateEl?.value||new Date().toISOString().slice(0,10),cat,amount:amtOrig*rate,amountOriginal:amtOrig,currency:cur,note:noteEl?.value.trim()||''});
+  trip.imprestTopUps.push({id:uid(),date:dateEl?.value||new Date().toISOString().slice(0,10),cat,amount:amtOrig*rate,amountOriginal:amtOrig,currency:cur,note:noteEl?.value.trim()||'',location:imprestNewLoc[cat]||'overseas'});
   save();
   renderImprestCatsList();
   renderOfficial();
@@ -4541,13 +4632,14 @@ function deleteImprestTopUp(id){
   renderOfficial();
   showToast('Deleted');
 }
-function computeSummaryData(trip){
+function computeSummaryData(trip,scope){
   const p=state.officialProfile||{};
-  const expenses=state.officialExpenses?.[trip.id]||[];
-  const imprestByCat=getImprestByCat(trip);
+  const allExpenses=state.officialExpenses?.[trip.id]||[];
+  const expenses=scope?allExpenses.filter(e=>(e.location||'overseas')===scope):allExpenses;
+  const imprestByCat=getImprestByCat(trip,scope);
   const imprest=OFF_CATS.reduce((s,k)=>s+(imprestByCat[k]||0),0);
   const days=trip.start&&trip.end?Math.max(1,Math.round((new Date(trip.end+'T12:00')-new Date(trip.start+'T12:00'))/864e5)+1):0;
-  const daAuto=trip.daRate&&days&&!expenses.find(e=>e.cat==='DA')?trip.daRate*days:0;
+  const daAuto=(scope!=='india')&&trip.daRate&&days&&!allExpenses.find(e=>e.cat==='DA')?trip.daRate*days:0;
   const catT={};OFF_CATS.forEach(k=>catT[k]=0);
   expenses.forEach(e=>{if(catT[e.cat]!==undefined)catT[e.cat]+=e.amount;});
   if(daAuto)catT['DA']=daAuto;
@@ -4558,57 +4650,67 @@ function computeSummaryData(trip){
   const fmtI=v=>v?(CURRENCY_SYMBOLS[trip.currency]||'₹')+Math.round(v).toLocaleString('en-IN'):'—';
   return {p,expenses,imprestByCat,imprest,days,daAuto,catT,totalSpent,totalReimb,net,receipts,fmtI};
 }
-function buildSummaryHtmlDoc(trip){
-  const d=computeSummaryData(trip);
+function scopeLabel(scope){return scope==='india'?'India':scope==='overseas'?'Overseas':'Combined';}
+function buildScopeSectionHtml(trip,scope,H){
+  const d=computeSummaryData(trip,scope);
   const {p,expenses,imprestByCat,imprest,days,daAuto,catT,totalSpent,totalReimb,net,receipts,fmtI}=d;
-  const H='#1E3A5F';
-  let html='<html><head><meta charset="UTF-8"><title>Expense Summary - '+trip.dest+'</title><style>body{font-family:Arial;font-size:11pt;margin:30px}table{width:100%;border-collapse:collapse}th{background:'+H+';color:#fff;padding:8px 10px;text-align:left}td{padding:7px 10px;border:1px solid #ccc}tr:nth-child(even){background:#F5F5F5}.title{font-size:16pt;font-weight:bold;color:'+H+'}.tr{background:#E3F2FD;font-weight:bold}.settle{padding:14px;border-radius:8px;margin:16px 0}.sig{margin-top:40px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px}.sb{border-top:1px solid #999;padding-top:6px;font-size:10pt;color:#555}</style></head><body>';
-  html+='<div class="title">OFFICIAL TOUR EXPENSE SUMMARY</div>';
-  html+='<table style="margin:16px 0;border:none"><tr><td style="border:none;width:50%"><b>Name:</b> '+(p.name||'_______')+'</td><td style="border:none"><b>Employee ID:</b> '+(p.empId||'_______')+'</td></tr>';
-  html+='<tr><td style="border:none"><b>Designation:</b> '+(p.desig||'_______')+'</td><td style="border:none"><b>Department:</b> '+(p.dept||'_______')+'</td></tr>';
-  html+='<tr><td style="border:none"><b>Destination:</b> '+trip.dest+'</td><td style="border:none"><b>Purpose:</b> '+(trip.purpose||'')+'</td></tr>';
-  html+='<tr><td style="border:none"><b>Dates:</b> '+(trip.start?fmt(trip.start):'')+' → '+(trip.end?fmt(trip.end):'')+' ('+days+' days)</td><td style="border:none"><b>Persons:</b> '+(trip.persons||1)+' · Receipts: '+receipts+'/'+expenses.length+'</td></tr></table>';
-  html+='<table><tr><th>Category</th><th style="text-align:right">Taken</th><th style="text-align:right">Actual</th><th style="text-align:right">Left</th><th>Reimb?</th></tr>';
+  let html='<table><tr><th>Category</th><th style="text-align:right">Taken</th><th style="text-align:right">Actual</th><th style="text-align:right">Left</th><th>Reimb?</th></tr>';
   OFF_CATS.forEach(cat=>{
     const tk=imprestByCat[cat]||0,a=catT[cat]||0,lf=tk-a;
     html+='<tr><td>'+OFF_ICONS[cat]+' '+cat+'</td><td style="text-align:right">'+fmtI(tk)+'</td><td style="text-align:right">'+fmtI(a)+'</td><td style="text-align:right;color:'+(lf<0?'#C62828':'#2E7D32')+'">'+(tk?fmtI(lf):'—')+'</td><td style="text-align:center">'+(OFF_REIMB[cat]?'✅':'❌')+'</td></tr>';
   });
   html+='<tr class="tr"><td><b>TOTAL</b></td><td style="text-align:right"><b>'+fmtI(imprest)+'</b></td><td style="text-align:right"><b>'+fmtI(totalSpent)+'</b></td><td style="text-align:right"><b>'+fmtI(imprest-totalSpent)+'</b></td><td></td></tr></table>';
   html+='<div class="settle" style="background:'+(net>=0?'#E8F5E9':'#FFEBEE')+';"><b>TOTAL SPENT:</b> '+fmtI(totalReimb)+'<br><b>Less Imprest Received:</b> '+fmtI(imprest)+'<br><b style="font-size:13pt;color:'+(net>=0?'#2E7D32':'#C62828')+'">BALANCE: '+(net<0?'-':'')+fmtI(Math.abs(net))+'</b></div>';
-  html+='<br><b style="color:'+H+'">EXPENSE DETAILS</b><br><br>';
+  html+='<br><b style="color:'+H+'">EXPENSE DETAILS'+(receipts||expenses.length?' ('+receipts+'/'+expenses.length+' with receipts)':'')+'</b><br><br>';
   html+='<table><tr><th>Date</th><th>Category</th><th>Description / Purpose</th><th style="text-align:right">Amount</th><th>Receipt</th></tr>';
   [...expenses].sort((a,b)=>a.date.localeCompare(b.date)).forEach(e=>{const rTag=e.receiptStatus==='attached'?'🧾 Attached':e.receiptStatus==='custom'?'📍 '+(e.receiptLocation||'Kept elsewhere'):(e.receipt&&!e.receiptStatus?'🧾 Attached':'❌ None');html+='<tr><td>'+fmt(e.date)+'</td><td>'+OFF_ICONS[e.cat]+' '+e.cat+'</td><td>'+e.purpose+'</td><td style="text-align:right">'+fmtI(e.amount)+'</td><td style="text-align:center;font-size:9pt;">'+rTag+'</td></tr>';});
   if(daAuto)html+='<tr style="background:#FFF8E1"><td colspan="2">💰 DA (Auto)</td><td>'+days+' days × '+(CURRENCY_SYMBOLS[trip.currency]||'₹')+trip.daRate+'</td><td style="text-align:right">'+fmtI(daAuto)+'</td><td style="text-align:center">—</td></tr>';
   html+='<tr class="tr"><td colspan="3"><b>TOTAL</b></td><td style="text-align:right"><b>'+fmtI(totalSpent)+'</b></td><td></td></tr></table>';
+  return html;
+}
+function buildSummaryHtmlDoc(trip,scope){
+  const p=state.officialProfile||{};
+  const allExpenses=state.officialExpenses?.[trip.id]||[];
+  const days=trip.start&&trip.end?Math.max(1,Math.round((new Date(trip.end+'T12:00')-new Date(trip.start+'T12:00'))/864e5)+1):0;
+  const H='#1E3A5F';
+  let html='<html><head><meta charset="UTF-8"><title>Expense Summary - '+trip.dest+' ('+scopeLabel(scope)+')</title><style>body{font-family:Arial;font-size:11pt;margin:30px}table{width:100%;border-collapse:collapse}th{background:'+H+';color:#fff;padding:8px 10px;text-align:left}td{padding:7px 10px;border:1px solid #ccc}tr:nth-child(even){background:#F5F5F5}.title{font-size:16pt;font-weight:bold;color:'+H+'}.sub{font-size:12pt;font-weight:bold;color:'+H+';margin:24px 0 10px;border-bottom:2px solid '+H+';padding-bottom:4px;}.tr{background:#E3F2FD;font-weight:bold}.settle{padding:14px;border-radius:8px;margin:16px 0}.sig{margin-top:40px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px}.sb{border-top:1px solid #999;padding-top:6px;font-size:10pt;color:#555}</style></head><body>';
+  html+='<div class="title">OFFICIAL TOUR EXPENSE SUMMARY'+(scope!=='both'?' — '+scopeLabel(scope).toUpperCase():'')+'</div>';
+  html+='<table style="margin:16px 0;border:none"><tr><td style="border:none;width:50%"><b>Name:</b> '+(p.name||'_______')+'</td><td style="border:none"><b>Employee ID:</b> '+(p.empId||'_______')+'</td></tr>';
+  html+='<tr><td style="border:none"><b>Designation:</b> '+(p.desig||'_______')+'</td><td style="border:none"><b>Department:</b> '+(p.dept||'_______')+'</td></tr>';
+  html+='<tr><td style="border:none"><b>Destination:</b> '+trip.dest+'</td><td style="border:none"><b>Purpose:</b> '+(trip.purpose||'')+'</td></tr>';
+  html+='<tr><td style="border:none"><b>Dates:</b> '+(trip.start?fmt(trip.start):'')+' → '+(trip.end?fmt(trip.end):'')+' ('+days+' days)</td><td style="border:none"><b>Persons:</b> '+(trip.persons||1)+'</td></tr></table>';
+  if(scope==='both'){
+    html+='<div class="sub">🌍 OVERSEAS EXPENSES</div>'+buildScopeSectionHtml(trip,'overseas',H);
+    html+='<div class="sub">🇮🇳 INDIA EXPENSES</div>'+buildScopeSectionHtml(trip,'india',H);
+  } else {
+    html+=buildScopeSectionHtml(trip,scope,H);
+  }
   html+='<div class="sig"><div class="sb">Submitted by<br><br>'+(p.name||'')+'<br>Date: ___________</div><div class="sb">Verified by<br><br>Accounts<br>Date: ___________</div><div class="sb">Approved by<br><br>Manager<br>Date: ___________</div></div></body></html>';
   return html;
 }
 function exportSummaryHtml(){
   const trip=getOfficialTrip();if(!trip)return;
-  const html=buildSummaryHtmlDoc(trip);
+  const html=buildSummaryHtmlDoc(trip,offExportScope);
   const blob=new Blob([html],{type:'text/html;charset=utf-8'});
   const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');a.href=url;a.download='ExpenseSummary-'+trip.dest.replace(/[^a-z0-9]/gi,'-')+'.html';
+  const a=document.createElement('a');a.href=url;a.download='ExpenseSummary-'+trip.dest.replace(/[^a-z0-9]/gi,'-')+'-'+scopeLabel(offExportScope)+'.html';
   document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
   showToast('HTML summary downloaded ✅');
 }
 function exportSummaryPdf(){
   const trip=getOfficialTrip();if(!trip)return;
-  const html=buildSummaryHtmlDoc(trip);
+  const html=buildSummaryHtmlDoc(trip,offExportScope);
   const w=window.open('','_blank');
   if(!w){showToast('Please allow popups to print/save as PDF');return;}
   w.document.open();w.document.write(html);w.document.close();
   setTimeout(()=>{w.focus();w.print();},400);
   showToast('Opening print dialog — choose "Save as PDF" ✅');
 }
-function exportSummaryXlsx(){
-  const trip=getOfficialTrip();if(!trip)return;
-  if(typeof XLSX==='undefined'){showToast('Excel library still loading — try again in a moment');return;}
-  const d=computeSummaryData(trip);
+function buildXlsxRows(trip,scope){
+  const d=computeSummaryData(trip,scope);
   const {p,expenses,imprestByCat,imprest,days,daAuto,catT,totalSpent,totalReimb,net,receipts}=d;
-  const wb=XLSX.utils.book_new();
   const info=[
-    ['OFFICIAL TOUR EXPENSE SUMMARY'],[],
+    ['OFFICIAL TOUR EXPENSE SUMMARY — '+scopeLabel(scope).toUpperCase()],[],
     ['Name',p.name||'','Employee ID',p.empId||''],
     ['Designation',p.desig||'','Department',p.dept||''],
     ['Destination',trip.dest,'Purpose',trip.purpose||''],
@@ -4634,19 +4736,29 @@ function exportSummaryXlsx(){
   });
   if(daAuto)expRows.push([fmt(trip.start||''),'DA','DA (Auto) — '+days+' days',daAuto,trip.currency,'—']);
   expRows.push(['','','TOTAL',totalSpent,'','']);
-  const allRows=[...info,['CATEGORY BREAKDOWN'],...catRows,[],['EXPENSE DETAILS'],...expRows];
-  const ws=XLSX.utils.aoa_to_sheet(allRows);
-  ws['!cols']=[{wch:20},{wch:16},{wch:28},{wch:14},{wch:12},{wch:16}];
-  XLSX.utils.book_append_sheet(wb,ws,'Expense Summary');
-  XLSX.writeFile(wb,'ExpenseSummary-'+trip.dest.replace(/[^a-z0-9]/gi,'-')+'.xlsx');
+  return [...info,['CATEGORY BREAKDOWN'],...catRows,[],['EXPENSE DETAILS'],...expRows];
+}
+function exportSummaryXlsx(){
+  const trip=getOfficialTrip();if(!trip)return;
+  if(typeof XLSX==='undefined'){showToast('Excel library still loading — try again in a moment');return;}
+  const wb=XLSX.utils.book_new();
+  const cols=[{wch:20},{wch:16},{wch:28},{wch:14},{wch:12},{wch:16}];
+  if(offExportScope==='both'){
+    const wsO=XLSX.utils.aoa_to_sheet(buildXlsxRows(trip,'overseas'));wsO['!cols']=cols;
+    XLSX.utils.book_append_sheet(wb,wsO,'Overseas');
+    const wsI=XLSX.utils.aoa_to_sheet(buildXlsxRows(trip,'india'));wsI['!cols']=cols;
+    XLSX.utils.book_append_sheet(wb,wsI,'India');
+  } else {
+    const ws=XLSX.utils.aoa_to_sheet(buildXlsxRows(trip,offExportScope));ws['!cols']=cols;
+    XLSX.utils.book_append_sheet(wb,ws,scopeLabel(offExportScope));
+  }
+  XLSX.writeFile(wb,'ExpenseSummary-'+trip.dest.replace(/[^a-z0-9]/gi,'-')+'-'+scopeLabel(offExportScope)+'.xlsx');
   showToast('Excel file downloaded ✅');
 }
-function exportSummaryWhatsapp(){
-  const trip=getOfficialTrip();if(!trip)return;
-  const d=computeSummaryData(trip);
-  const {imprest,totalSpent,totalReimb,net,days,catT,imprestByCat}=d;
-  let msg='*OFFICIAL TOUR EXPENSE SUMMARY*\n';
-  msg+=trip.dest+' ('+(trip.start?fmt(trip.start):'')+' - '+(trip.end?fmt(trip.end):'')+', '+days+' days)\n\n';
+function buildWhatsappSection(trip,scope){
+  const d=computeSummaryData(trip,scope);
+  const {imprest,totalReimb,net,catT}=d;
+  let msg='';
   OFF_CATS.forEach(cat=>{
     const a=catT[cat]||0;
     if(a>0)msg+=OFF_ICONS[cat]+' '+cat+': '+d.fmtI(a)+'\n';
@@ -4654,6 +4766,19 @@ function exportSummaryWhatsapp(){
   msg+='\nTotal Spent: '+d.fmtI(totalReimb);
   msg+='\nImprest Received: '+d.fmtI(imprest);
   msg+='\n*BALANCE: '+(net<0?'-':'')+d.fmtI(Math.abs(net))+'*'+(net>=0?' (company owes you)':' (return to company)');
+  return msg;
+}
+function exportSummaryWhatsapp(){
+  const trip=getOfficialTrip();if(!trip)return;
+  const days=trip.start&&trip.end?Math.max(1,Math.round((new Date(trip.end+'T12:00')-new Date(trip.start+'T12:00'))/864e5)+1):0;
+  let msg='*OFFICIAL TOUR EXPENSE SUMMARY*\n';
+  msg+=trip.dest+' ('+(trip.start?fmt(trip.start):'')+' - '+(trip.end?fmt(trip.end):'')+', '+days+' days)\n';
+  if(offExportScope==='both'){
+    msg+='\n*🌍 OVERSEAS*\n'+buildWhatsappSection(trip,'overseas');
+    msg+='\n\n*🇮🇳 INDIA*\n'+buildWhatsappSection(trip,'india');
+  } else {
+    msg+='\n'+buildWhatsappSection(trip,offExportScope);
+  }
   const url='https://wa.me/?text='+encodeURIComponent(msg);
   window.open(url,'_blank');
   showToast('Opening WhatsApp ✅');
