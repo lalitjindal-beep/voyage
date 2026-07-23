@@ -2130,6 +2130,12 @@ function renderExpCurrencyChips() {
   const trip = expCtxTrip();
   const container = document.getElementById('exp-currency-chips');
   if (!trip || !container) return;
+  if (expenseCtx === 'official' && expSelectedLocation === 'india') {
+    selectedExpCurrency = 'INR';
+    container.innerHTML = `<div class="chip active" style="background:var(--green-light);border-color:var(--green);color:#1a5c35;">🇮🇳 INR only — no conversion</div>`;
+    updateExpConversion();
+    return;
+  }
   const baseCur = trip.currency || 'USD';
   const currencies = getTripCurrencies(trip.id);
   if (!selectedExpCurrency || !currencies.includes(selectedExpCurrency)) selectedExpCurrency = baseCur;
@@ -2319,10 +2325,11 @@ function saveMultiExpense() {
   if (!trip) { showToast('Select a trip first'); return; }
   const cat = document.getElementById('inp-exp-cat').value;
   const date = document.getElementById('inp-exp-date').value;
-  const expCur = selectedExpCurrency || trip.currency;
+  const isIndiaExpense = expenseCtx === 'official' && expSelectedLocation === 'india';
+  const expCur = isIndiaExpense ? 'INR' : (selectedExpCurrency || trip.currency);
   const baseCur = trip.currency || 'USD';
   const rates = state.exchangeRates?.[trip.id] || {};
-  const rate = rates[expCur + '_to_' + baseCur] || (expCur === baseCur ? 1 : 1);
+  const rate = isIndiaExpense ? 1 : (rates[expCur + '_to_' + baseCur] || (expCur === baseCur ? 1 : 1));
   const rows = document.querySelectorAll('#multi-expense-rows > div');
   let count = 0;
   const payMethod = selectedPayMethod;
@@ -2947,10 +2954,18 @@ function selectEditExpLocation(loc) {
   document.getElementById('edit-exp-location').value = loc;
   document.getElementById('edit-exp-loc-overseas')?.classList.toggle('active', loc==='overseas');
   document.getElementById('edit-exp-loc-india')?.classList.toggle('active', loc==='india');
+  const tripId = document.getElementById('edit-exp-trip-id').value;
+  renderEditExpCurrencyChips(tripId, loc==='india' ? 'INR' : document.getElementById('edit-exp-currency').value);
 }
 function renderEditExpCurrencyChips(tripId, selectedCur) {
   const container = document.getElementById('edit-exp-currency-chips');
   if (!container) return;
+  const editLoc = document.getElementById('edit-exp-location')?.value || 'overseas';
+  if (expenseCtx === 'official' && editLoc === 'india') {
+    document.getElementById('edit-exp-currency').value = 'INR';
+    container.innerHTML = `<div class="chip active" style="background:var(--green-light);border-color:var(--green);color:#1a5c35;">🇮🇳 INR only — no conversion</div>`;
+    return;
+  }
   const currencies = getTripCurrencies(tripId);
   const baseCur = state.trips.find(t=>t.id===tripId)?.currency || 'USD';
   container.innerHTML = currencies.map(c => {
@@ -2970,10 +2985,12 @@ function saveEditExpense() {
   const amount = parseFloat(document.getElementById('edit-exp-amount').value);
   if (!name || !amount) { showToast('Fill in all fields'); return; }
   const trip = state.trips.find(t => t.id === tripId);
-  const expCur = document.getElementById('edit-exp-currency').value;
+  const editLoc = document.getElementById('edit-exp-location')?.value || 'overseas';
+  const isIndiaExpense = expenseCtx === 'official' && editLoc === 'india';
+  const expCur = isIndiaExpense ? 'INR' : document.getElementById('edit-exp-currency').value;
   const baseCur = trip?.currency || 'USD';
   const rates = state.exchangeRates?.[tripId] || {};
-  const rate = rates[expCur + '_to_' + baseCur] || (expCur === baseCur ? 1 : 1);
+  const rate = isIndiaExpense ? 1 : (rates[expCur + '_to_' + baseCur] || (expCur === baseCur ? 1 : 1));
   const pm = document.getElementById('edit-exp-pay-method')?.value || selectedEditPayMethod || '💵 Cash';
   const cardName = pm === '💳 Credit Card' ? (document.getElementById('edit-exp-card-name')?.value.trim()||'') : '';
   if (expenseCtx === 'official') {
@@ -4495,6 +4512,8 @@ function selectExpLocation(loc){
   const locO=document.getElementById('exp-loc-overseas'),locI=document.getElementById('exp-loc-india');
   if(locO)locO.classList.toggle('active',loc==='overseas');
   if(locI)locI.classList.toggle('active',loc==='india');
+  if(loc==='india')selectedExpCurrency='INR';
+  renderExpCurrencyChips();
 }
 function expCtxTrip(){ return expenseCtx==='official' ? getOfficialTrip() : getActiveTrip('bg'); }
 function expCtxCats(){ return expenseCtx==='official' ? OFF_CATS : getAllExpCats(); }
