@@ -4375,6 +4375,7 @@ function renderOfficial(){
   const days=trip.start&&trip.end?Math.max(1,Math.round((new Date(trip.end+'T12:00')-new Date(trip.start+'T12:00'))/864e5)+1):0;
   const daAuto=trip.daRate&&days&&!expenses.find(e=>e.cat==='DA')?trip.daRate*days:0;
   const fmtI=v=>(CURRENCY_SYMBOLS[trip.currency]||'₹')+Math.round(v).toLocaleString('en-IN');
+  const fmtINR=v=>'₹'+Math.round(v).toLocaleString('en-IN');
   // Per-location split (DA auto-calc counts as Overseas, since it's a per-diem for days on tour)
   const catTotalsOverseas={};OFF_CATS.forEach(k=>catTotalsOverseas[k]=0);
   const catTotalsIndia={};OFF_CATS.forEach(k=>catTotalsIndia[k]=0);
@@ -4415,7 +4416,7 @@ function renderOfficial(){
   const claimCard=(label,total)=>{
     return '<div class="card" style="padding:12px;background:var(--sky-light);border:1.5px solid var(--sky);">'+
     '<div style="font-size:10px;font-weight:700;color:var(--sky-dark);margin-bottom:4px;">'+label+'</div>'+
-    '<div style="font-size:18px;font-weight:800;color:var(--sky-dark);">'+fmtI(total)+'</div>'+
+    '<div style="font-size:18px;font-weight:800;color:var(--sky-dark);">'+fmtINR(total)+'</div>'+
     '<div style="font-size:9px;color:var(--muted);margin-top:2px;">To claim from company</div></div>';
   };
   html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">'+balanceCard('🌍 OVERSEAS BALANCE',netOverseas)+claimCard('🇮🇳 INDIA EXPENSES',totalReimbIndia)+'</div>';
@@ -4445,7 +4446,7 @@ function renderOfficial(){
     html+='</div>';
   });
   html+='<div style="border-top:1.5px solid var(--border);padding-top:8px;display:flex;justify-content:space-between;font-size:13px;font-weight:700;"><span>TOTAL SPENT (Overseas)</span><span>'+fmtI(totalReimbOverseas)+'</span></div>';
-  if(totalReimbIndia>0)html+='<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:4px;">🇮🇳 India spend (see below): <b>'+fmtI(totalReimbIndia)+'</b></div>';
+  if(totalReimbIndia>0)html+='<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:4px;">🇮🇳 India spend (see below): <b>'+fmtINR(totalReimbIndia)+'</b></div>';
   }
   html+='</div>';
   html+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">';
@@ -4481,12 +4482,13 @@ function renderOfficial(){
   const visible=sorted.slice(0,offExpPageSize);
   html+=visible.map(e=>{
     const eCur=e.currency||trip.currency||'INR';
-    const isForeign=eCur!==(trip.currency||'INR');
+    const isIndia=(e.location||'overseas')==='india';
+    const isForeign=!isIndia&&eCur!==(trip.currency||'INR');
     const origLine=isForeign?'<div style="font-size:10px;color:var(--muted);">'+fmtCurrency(e.amountOriginal??e.amount,eCur)+'</div>':'';
     const curBadge=isForeign?' <span style="font-size:9px;background:var(--sky-light);color:var(--sky-dark);border-radius:4px;padding:1px 5px;font-weight:700;">'+eCur+'</span>':'';
-    const locBadge=(e.location||'overseas')==='india'?' <span style="font-size:9px;background:#FFF3E0;color:#E65100;border-radius:4px;padding:1px 5px;font-weight:700;">🇮🇳 India</span>':'';
+    const locBadge=isIndia?' <span style="font-size:9px;background:#FFF3E0;color:#E65100;border-radius:4px;padding:1px 5px;font-weight:700;">🇮🇳 India</span>':'';
     const receiptTag=e.receiptStatus==='attached'?' · 🧾':(e.receiptStatus==='custom'?' · 📍'+(e.receiptLocation?' '+e.receiptLocation:''):(e.receipt&&!e.receiptStatus?' · 🧾':''));
-    return '<div class="card" style="display:flex;gap:10px;align-items:center;padding:10px 12px;margin-bottom:8px;"><span style="font-size:20px;">'+OFF_ICONS[e.cat]+'</span><div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:600;">'+offHl(e.purpose)+curBadge+locBadge+'</div><div style="font-size:11px;color:var(--muted);">'+fmt(e.date)+' · '+e.cat+receiptTag+(e.payMethod?' · '+e.payMethod:'')+'</div></div><div style="text-align:right;"><div style="font-size:14px;font-weight:700;">'+fmtI(e.amount)+'</div>'+origLine+'<span onclick="editOfficialExp(\''+trip.id+'\',\''+e.id+'\')" style="font-size:16px;cursor:pointer;color:var(--sky);">✏️</span></div></div>';
+    return '<div class="card" style="display:flex;gap:10px;align-items:center;padding:10px 12px;margin-bottom:8px;"><span style="font-size:20px;">'+OFF_ICONS[e.cat]+'</span><div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:600;">'+offHl(e.purpose)+curBadge+locBadge+'</div><div style="font-size:11px;color:var(--muted);">'+fmt(e.date)+' · '+e.cat+receiptTag+(e.payMethod?' · '+e.payMethod:'')+'</div></div><div style="text-align:right;"><div style="font-size:14px;font-weight:700;">'+((e.location||'overseas')==='india'?fmtINR(e.amount):fmtI(e.amount))+'</div>'+origLine+'<span onclick="editOfficialExp(\''+trip.id+'\',\''+e.id+'\')" style="font-size:16px;cursor:pointer;color:var(--sky);">✏️</span></div></div>';
   }).join('');
   if(!sorted.length)html+='<div style="font-size:12px;color:var(--muted);padding:12px 0;text-align:center;">'+(q?'No expenses match "<b>'+q+'</b>"':'No expenses'+(offExpFilter!=='All'?' in this category':'')+' yet')+'</div>';
   if(sorted.length>visible.length)html+='<button onclick="offExpPageSize+=25;renderOfficial();" style="width:100%;padding:11px;border:1.5px dashed var(--border);border-radius:12px;background:none;color:var(--sky);font-size:13px;font-weight:600;cursor:pointer;margin-bottom:8px;font-family:inherit;">Show '+Math.min(25,sorted.length-visible.length)+' more ('+(sorted.length-visible.length)+' left)</button>';
@@ -4654,7 +4656,7 @@ function computeSummaryData(trip,scope){
   const totalReimb=OFF_CATS.filter(k=>OFF_REIMB[k]).reduce((s,k)=>s+catT[k],0);
   const net=totalReimb-imprest;
   const receipts=expenses.filter(e=>e.receipt).length;
-  const fmtI=v=>v?(CURRENCY_SYMBOLS[trip.currency]||'₹')+Math.round(v).toLocaleString('en-IN'):'—';
+  const fmtI=v=>{const c=scope==='india'?'INR':(trip.currency||'INR');return v?(CURRENCY_SYMBOLS[c]||'₹')+Math.round(v).toLocaleString('en-IN'):'—';};
   return {p,expenses,imprestByCat,imprest,days,daAuto,catT,totalSpent,totalReimb,net,receipts,fmtI};
 }
 function scopeLabel(scope){return scope==='india'?'India':scope==='overseas'?'Overseas':'Combined';}
